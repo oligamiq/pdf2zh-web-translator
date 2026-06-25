@@ -1,0 +1,48 @@
+services:
+  pc-api:
+    build:
+      context: ./pc-api
+    env_file:
+      - .env
+    environment:
+      PC_AGENT_MODE: ${PC_AGENT_MODE:-mock}
+      WORKER_API_BASE_URL: ${WORKER_API_BASE_URL}
+      WORKER_API_BASE_URL_MOCK: ${WORKER_API_BASE_URL_MOCK:-http://host.docker.internal:8787}
+      HDD_BASE: ${HDD_BASE}
+      PROXY_SECRET: ${PROXY_SECRET}
+      AGENT_TOKEN: ${AGENT_TOKEN}
+      PDF2ZH_DEFAULT_BASE_URL: ${PDF2ZH_DEFAULT_BASE_URL}
+      PDF2ZH_DEFAULT_MODEL: ${PDF2ZH_DEFAULT_MODEL}
+      PDF2ZH_DEFAULT_API_KEY: ${PDF2ZH_DEFAULT_API_KEY}
+      PDF2ZH_DEFAULT_REASONING_EFFORT: ${PDF2ZH_DEFAULT_REASONING_EFFORT:-high}
+      PDF2ZH_DEFAULT_TIMEOUT: ${PDF2ZH_DEFAULT_TIMEOUT:-500}
+      PDF2ZH_OPENAI_COMPATIBLE_BASE_URL: ${PDF2ZH_DEFAULT_BASE_URL}
+      PDF2ZH_OPENAI_COMPATIBLE_MODEL: ${PDF2ZH_DEFAULT_MODEL}
+      PDF2ZH_OPENAI_COMPATIBLE_API_KEY: ${PDF2ZH_DEFAULT_API_KEY}
+      PDF2ZH_OPENAI_COMPATIBLE_TIMEOUT: ${PDF2ZH_DEFAULT_TIMEOUT:-500}
+      PDF2ZH_OPENAI_COMPATIBLE_REASONING_EFFORT: ${PDF2ZH_DEFAULT_REASONING_EFFORT:-high}
+    volumes:
+      - ${HDD_BASE}/data:/data
+    networks:
+      - internal-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # No ports exposed to host.
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles:
+      - prod
+    # The user must provide TUNNEL_TOKEN via .env or environment variable
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
+    networks:
+      - internal-net
+    restart: unless-stopped
+
+networks:
+  internal-net:
+    # No external access needed except outgoing for cloudflared
+    driver: bridge

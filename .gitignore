@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+.dev.vars
+.wrangler/
+node_modules/
+dist/
+
+.tmp/
+worker/.dev.vars.bak
+*.log
+download.zip
+
