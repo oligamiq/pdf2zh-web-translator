@@ -54,25 +54,86 @@ export async function checkHealth() {
 }
 
 export async function getJobs() {
-  return apiFetch('/jobs').then(r => r.json());
+  const token = await getToken();
+  let jobs = [];
+  if (token) {
+    jobs = await apiFetch('/jobs').then(r => r.json());
+  }
+  
+  // Also fetch public jobs stored in localStorage
+  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
+  const publicJobs = JSON.parse(publicJobsStr);
+  
+  for (const [id, receipt] of Object.entries(publicJobs)) {
+    try {
+      const publicJob = await apiFetch(`/public/jobs/${id}?receipt=${receipt}`).then(r => r.json());
+      // Append if not already in the list
+      if (!jobs.find((j: any) => j.id === id)) {
+        jobs.push(publicJob);
+      }
+    } catch (e) {
+      // Ignore missing or expired public jobs
+    }
+  }
+  
+  // sort by created_at DESC
+  jobs.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  
+  return jobs;
 }
 
 export async function getJob(id: string) {
+  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
+  const publicJobs = JSON.parse(publicJobsStr);
+  const receipt = publicJobs[id];
+  if (receipt) {
+    return apiFetch(`/public/jobs/${id}?receipt=${receipt}`).then(r => r.json());
+  }
   return apiFetch(`/jobs/${id}`).then(r => r.json());
 }
 
-export async function uploadJob(file: File) {
+export async function uploadJob(file: File, turnstileToken?: string, apiKey?: string, clientId?: string) {
   const formData = new FormData();
   formData.append('pdf', file);
-  // Do NOT set Content-Type header, let browser set it with boundary
-  return apiFetch('/jobs', {
+  if (turnstileToken) formData.append('turnstile', turnstileToken);
+  if (apiKey) formData.append('api_key', apiKey);
+  if (clientId) formData.append('client_id', clientId);
+  
+  const res = await apiFetch('/jobs', {
     method: 'POST',
     body: formData,
   }).then(r => r.json());
+  
+  if (res.receipt) {
+    const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
+    const publicJobs = JSON.parse(publicJobsStr);
+    publicJobs[res.id] = res.receipt;
+    localStorage.setItem('public_jobs', JSON.stringify(publicJobs));
+  }
+  
+  return res;
 }
 
 export async function getLog(id: string, offset: number) {
+  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
+  const publicJobs = JSON.parse(publicJobsStr);
+  const receipt = publicJobs[id];
+  if (receipt) {
+    return apiFetch(`/public/jobs/${id}/log?receipt=${receipt}&offset=${offset}&limit=65536`).then(r => r.json());
+  }
   return apiFetch(`/jobs/${id}/log?offset=${offset}&limit=65536`).then(r => r.json());
+}
+
+// Removed getDownloadUrl since downloadJob is used
+
+export async function downloadJob(id: string) {
+  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
+  const publicJobs = JSON.parse(publicJobsStr);
+  const receipt = publicJobs[id];
+  if (receipt) {
+    return apiFetch(`/public/jobs/${id}/download?receipt=${receipt}`);
+  }
+  return apiFetch(`/jobs/${id}/download`);
 }
 
 export async function getLlmSettings() {

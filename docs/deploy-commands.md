@@ -22,6 +22,7 @@ npx wrangler d1 execute pdf2zh-db --local --file=./schema.sql
 
 # 3. マイグレーション (本番・リモート用)
 npx wrangler d1 execute pdf2zh-db --remote --file=./schema.sql
+npx wrangler d1 execute pdf2zh-db --remote --file=./migrations/0003_add_public_jobs.sql
 ```
 
 ## Cloudflare Worker
@@ -39,6 +40,10 @@ npm run deploy
 # 本番用シークレットの設定
 npx wrangler secret put PROXY_SECRET
 npx wrangler secret put AGENT_TOKEN
+npx wrangler secret put USER_SETTINGS_SECRET
+npx wrangler secret put TURNSTILE_SECRET_KEY
+npx wrangler secret put PUBLIC_RATE_LIMIT_SALT
+npx wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY
 ```
 
 ## Frontend (SolidJS)

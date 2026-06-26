@@ -29,6 +29,7 @@ npx wrangler d1 create pdf2zh-prod
 `v2/worker/wrangler.toml` に `database_id` をセットしてから実行します。
 ```bash
 npx wrangler d1 execute pdf2zh-db --remote --file=./schema.sql
+npx wrangler d1 execute pdf2zh-db --remote --file=./migrations/0003_add_public_jobs.sql
 ```
 > 期待出力: `3 commands executed successfully.` 等の成功メッセージ。
 
@@ -38,8 +39,11 @@ npx wrangler d1 execute pdf2zh-db --remote --file=./schema.sql
 openssl rand -base64 48 | npx wrangler secret put PROXY_SECRET
 openssl rand -base64 48 | npx wrangler secret put AGENT_TOKEN
 openssl rand -base64 32 | npx wrangler secret put USER_SETTINGS_SECRET
+openssl rand -base64 32 | npx wrangler secret put PUBLIC_RATE_LIMIT_SALT
+npx wrangler secret put TURNSTILE_SECRET_KEY
+npx wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY
 ```
-> 期待出力: `Successfully created secret for key PROXY_SECRET/AGENT_TOKEN`
+> 期待出力: `Successfully created secret for key PROXY_SECRET/AGENT_TOKEN` 等
 
 ## 8. Worker deploy
 `v2/worker/wrangler.toml` の `AUTH_MODE="firebase"` および `FIREBASE_PROJECT_ID` 等が正しく設定されているか確認し、デプロイします。
@@ -118,6 +122,7 @@ VITE_FIREBASE_STORAGE_BUCKET=(Firebaseから取得)
 VITE_FIREBASE_MESSAGING_SENDER_ID=(Firebaseから取得)
 VITE_FIREBASE_APP_ID=(Firebaseから取得)
 VITE_FIREBASE_MEASUREMENT_ID=(Firebaseから取得)
+VITE_TURNSTILE_SITE_KEY=(Cloudflare Turnstile Site Key)
 ```
 
 ## 14. Frontend build

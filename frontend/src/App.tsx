@@ -26,11 +26,9 @@ export default function App(props: { children?: JSX.Element }) {
       setUser(u);
       setLoading(false);
       
-      // Basic route guard
+      // Basic route guard (public mode enabled)
       const path = window.location.pathname;
-      if (!u && path !== '/login') {
-        navigate('/login', { replace: true });
-      } else if (u && path === '/login') {
+      if (u && path === '/login') {
         navigate('/', { replace: true });
       }
     });

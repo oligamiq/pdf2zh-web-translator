@@ -15,13 +15,14 @@ Authentication: `Authorization: Bearer <Firebase ID Token>`
 
 ### `POST /jobs`
 * **Method**: POST
-* **Headers**: `Authorization: Bearer <token>`
-* **Body**: `FormData` containing a file field `pdf`
+* **Headers**: `Authorization: Bearer <token>` (Optional)
+* **Body**: `FormData` containing a file field `pdf` (plus Turnstile token if public)
 * **Success Response**: `200 OK`
   ```json
   {
     "id": "uuid-string",
-    "status": "queued"
+    "status": "queued",
+    "receipt": "random-secret-for-public-jobs" // Only returned for public jobs
   }
   ```
 * **Error Response**: `400 Bad Request` or `401 Unauthorized` or `500 Internal Server Error`
@@ -73,6 +74,21 @@ Authentication: `Authorization: Bearer <Firebase ID Token>`
   * `404 Not Found` (job does not exist)
   * `409 Conflict` (not_ready, status is not succeeded)
   * `410 Gone` (download_expired)
+
+### `GET /public/jobs/:id`
+* **Method**: GET
+* **Query Parameters**: `receipt=<secret>`
+* **Success Response**: `200 OK` (Same object as `/jobs/:id`)
+
+### `GET /public/jobs/:id/log`
+* **Method**: GET
+* **Query Parameters**: `receipt=<secret>&offset=N&limit=65536`
+* **Success Response**: `200 OK` (Same as `/jobs/:id/log`)
+
+### `GET /public/jobs/:id/download`
+* **Method**: GET
+* **Query Parameters**: `receipt=<secret>`
+* **Success Response**: `200 OK` (Content-Type: `application/zip`)
 
 ---
 

@@ -1,6 +1,7 @@
 import { createSignal, onMount, Show } from 'solid-js';
 import { A } from '@solidjs/router';
 import { getLlmSettings, updateLlmSettings, clearLlmApiKey } from '../api';
+import { auth } from '../firebase';
 
 export default function Settings() {
   const [loading, setLoading] = createSignal(true);
@@ -14,6 +15,10 @@ export default function Settings() {
   const [hasApiKey, setHasApiKey] = createSignal(false);
 
   onMount(async () => {
+    if (!auth.currentUser) {
+      setLoading(false);
+      return;
+    }
     try {
       const data = await getLlmSettings();
       setLlmSource(data.llm_source || 'openaicompatible');
@@ -77,7 +82,14 @@ export default function Settings() {
       </div>
 
       <Show when={!loading()} fallback={<div class="p-4 text-gray-400">Loading settings...</div>}>
-        <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
+        <Show when={!auth.currentUser}>
+          <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
+            <h2 class="text-xl text-blue-400 font-bold mb-2">Settings are available after signing in.</h2>
+            <p class="text-gray-300">For guest mode, enter an API key on the upload form for one-time use.</p>
+          </div>
+        </Show>
+        <Show when={auth.currentUser}>
+          <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
           
           <Show when={message()}>
             <div class={`mb-4 p-3 rounded ${message()?.type === 'success' ? 'bg-green-900/50 text-green-300 border border-green-800' : 'bg-red-900/50 text-red-300 border border-red-800'}`}>
@@ -158,7 +170,8 @@ export default function Settings() {
               </button>
             </div>
           </form>
-        </div>
+          </div>
+        </Show>
       </Show>
     </div>
   );

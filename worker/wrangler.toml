@@ -12,7 +12,7 @@ binding = "PC_API_VPC"
 service_id = "019f02f0-2940-7b92-9fed-02b6a692f41f"
 remote = true
 [vars]
-CORS_ORIGIN = "*"
+CORS_ORIGIN = "https://pdftr.pages.dev"
 AUTH_MODE = "firebase" # Set to "firebase" in production
 FIREBASE_PROJECT_ID = "pdf2zh-tr"
 # Secrets (PROXY_SECRET, AGENT_TOKEN, etc.) should be set via:

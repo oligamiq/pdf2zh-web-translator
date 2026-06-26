@@ -14,6 +14,15 @@ export type Env = {
   FIREBASE_PROJECT_ID: string;
   USER_SETTINGS_SECRET?: string;
   PC_API_VPC?: Fetcher;
+
+  TURNSTILE_SECRET_KEY?: string;
+  TURNSTILE_TEST_BYPASS?: string;
+  PUBLIC_RATE_LIMIT_SALT?: string;
+
+  PUBLIC_FALLBACK_LLM_SOURCE?: string;
+  PUBLIC_FALLBACK_LLM_BASE_URL?: string;
+  PUBLIC_FALLBACK_LLM_MODEL?: string;
+  PUBLIC_FALLBACK_LLM_API_KEY?: string;
 }
 
 // --- Crypto Helpers for User LLM Settings ---
@@ -52,6 +61,50 @@ async function decryptApiKey(ciphertextB64: string, ivB64: string, secretB64: st
   } catch (e) {
     throw new Error('decryption_failed');
   }
+}
+
+async function sha256Hex(message: string): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', encodeStr(message));
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function verifyTurnstile(token: string, secretKey: string | undefined, testBypass: string | undefined): Promise<boolean> {
+  if (testBypass === 'true') return true;
+  if (!secretKey || !token) return false;
+  
+  const formData = new FormData();
+  formData.append('secret', secretKey);
+  formData.append('response', token);
+
+  try {
+    const result = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      body: formData,
+      method: 'POST',
+    });
+    const outcome = await result.json() as any;
+    return !!outcome.success;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function checkRateLimit(db: D1Database, key: string, limit: number, windowMs: number): Promise<boolean> {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - windowMs).toISOString();
+  
+  await db.prepare(`
+    INSERT INTO public_rate_limits (key, window_start, count)
+    VALUES (?, ?, 1)
+    ON CONFLICT(key) DO UPDATE SET
+      count = CASE WHEN window_start < ? THEN 1 ELSE count + 1 END,
+      window_start = CASE WHEN window_start < ? THEN ? ELSE window_start END,
+      updated_at = ?
+  `).bind(key, now.toISOString(), windowStart, windowStart, now.toISOString(), now.toISOString()).run();
+  
+  const record = await db.prepare(`SELECT count FROM public_rate_limits WHERE key = ?`).bind(key).first();
+  if (!record) return false;
+  return (record.count as number) <= limit;
 }
 
 async function fetchPrivateApi(
@@ -163,7 +216,7 @@ const authMiddleware = async (c: any, next: any) => {
   }
 }
 
-app.use('/jobs/*', authMiddleware)
+// apply auth middleware explicitly for GET /jobs routes later
 app.use('/settings/*', authMiddleware)
 
 // --- User Settings APIs (Public) ---
@@ -248,42 +301,123 @@ app.put('/settings/llm', async (c) => {
 
 app.post('/jobs', async (c) => {
   try {
-    const uid = c.get('uid') as string
+    const authHeader = c.req.header('Authorization');
+    let uid: string | null = null;
+    let ownerType = 'public';
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        uid = await verifyFirebaseToken(token, c.env.FIREBASE_PROJECT_ID, c.env.AUTH_MODE || 'firebase', c.env);
+        ownerType = 'firebase';
+      } catch (e) {
+        return c.json({ error: 'Unauthorized' }, 401);
+      }
+    }
+
     const id = crypto.randomUUID()
-    // Wait, user uploads file. FormData or Stream?
-    // Let's assume FormData for now
     const formData = await c.req.formData()
     const file = formData.get('pdf') as File
     if (!file) return c.json({ error: 'No pdf file' }, 400)
 
-    // 0. Fetch user settings snapshot
-    const settings = await c.env.DB.prepare(`SELECT * FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
-    const llm_source = settings?.llm_source || 'openaicompatible';
-    const llm_base_url = settings?.llm_base_url || '';
-    const llm_model = settings?.llm_model || '';
+    let receipt = '';
+    let publicReceiptHash = null;
+    let publicClientHash = null;
+    let publicIpHash = null;
+    let publicExpiresAt = null;
+    let fileSizeBytes = file.size;
+    let turnstileVerified = 0;
+    
+    let llm_source = 'openaicompatible';
+    let llm_base_url = '';
+    let llm_model = '';
     let encrypted_api_key_snapshot = null;
     let api_key_snapshot_iv = null;
     let api_key_key_version = null;
+    let llm_credential_mode = 'none';
 
-    if (settings?.encrypted_api_key && settings?.api_key_iv && c.env.USER_SETTINGS_SECRET) {
-      try {
-        const plainKey = await decryptApiKey(
-          settings.encrypted_api_key as string,
-          settings.api_key_iv as string,
-          c.env.USER_SETTINGS_SECRET,
-          `user_llm_settings:${uid}`
-        );
-        const reEncrypted = await encryptApiKey(
-          plainKey,
-          c.env.USER_SETTINGS_SECRET,
-          `job_llm_snapshot:${id}`
-        );
-        encrypted_api_key_snapshot = reEncrypted.ciphertext;
-        api_key_snapshot_iv = reEncrypted.iv;
-        api_key_key_version = reEncrypted.keyVersion;
-      } catch (e) {
-        console.error("Failed to re-encrypt api key for snapshot", e);
-        return c.json({ error: 'internal_error', message: 'Failed to snapshot settings' }, 500);
+    if (ownerType === 'public') {
+      if (file.size > 5 * 1024 * 1024) return c.json({ error: 'payload_too_large', message: 'Public mode is limited to 5MiB' }, 413);
+      
+      const turnstileToken = formData.get('turnstile') as string;
+      const verified = await verifyTurnstile(turnstileToken, c.env.TURNSTILE_SECRET_KEY, c.env.TURNSTILE_TEST_BYPASS);
+      if (!verified) return c.json({ error: 'turnstile_failed', message: 'Turnstile verification failed' }, 403);
+      turnstileVerified = 1;
+      
+      const ip = c.req.header('cf-connecting-ip') || 'unknown';
+      publicIpHash = await sha256Hex(ip + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
+      if (!await checkRateLimit(c.env.DB, `ip:${publicIpHash}`, 3, 24 * 60 * 60 * 1000)) {
+         return c.json({ error: 'rate_limited', message: 'Too many requests from this IP' }, 429);
+      }
+      
+      const clientId = formData.get('client_id') as string || 'unknown';
+      publicClientHash = await sha256Hex(clientId + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
+      if (!await checkRateLimit(c.env.DB, `client:${publicClientHash}`, 1, 24 * 60 * 60 * 1000)) {
+         return c.json({ error: 'rate_limited', message: 'Too many requests from this client' }, 429);
+      }
+      
+      receipt = crypto.randomUUID();
+      publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
+      
+      const now = new Date();
+      publicExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+      
+      const apiKey = formData.get('api_key') as string;
+      if (apiKey) {
+        llm_credential_mode = 'request_once';
+        if (c.env.USER_SETTINGS_SECRET) {
+          try {
+            const enc = await encryptApiKey(apiKey, c.env.USER_SETTINGS_SECRET, `job_llm_snapshot:${id}`);
+            encrypted_api_key_snapshot = enc.ciphertext;
+            api_key_snapshot_iv = enc.iv;
+            api_key_key_version = enc.keyVersion;
+          } catch (e) {
+            return c.json({ error: 'internal_error', message: 'Failed to encrypt API key' }, 500);
+          }
+        }
+      } else {
+        llm_credential_mode = 'free_fallback';
+        llm_source = c.env.PUBLIC_FALLBACK_LLM_SOURCE || 'openaicompatible';
+        llm_base_url = c.env.PUBLIC_FALLBACK_LLM_BASE_URL || '';
+        llm_model = c.env.PUBLIC_FALLBACK_LLM_MODEL || '';
+        if (c.env.PUBLIC_FALLBACK_LLM_API_KEY && c.env.USER_SETTINGS_SECRET) {
+          try {
+            const enc = await encryptApiKey(c.env.PUBLIC_FALLBACK_LLM_API_KEY, c.env.USER_SETTINGS_SECRET, `job_llm_snapshot:${id}`);
+            encrypted_api_key_snapshot = enc.ciphertext;
+            api_key_snapshot_iv = enc.iv;
+            api_key_key_version = enc.keyVersion;
+          } catch (e) {
+            return c.json({ error: 'internal_error', message: 'Failed to encrypt fallback API key' }, 500);
+          }
+        }
+      }
+    } else {
+      llm_credential_mode = 'user_settings';
+      const settings = await c.env.DB.prepare(`SELECT * FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
+      llm_source = settings?.llm_source as string || 'openaicompatible';
+      llm_base_url = settings?.llm_base_url as string || '';
+      llm_model = settings?.llm_model as string || '';
+
+      if (settings?.encrypted_api_key && settings?.api_key_iv && c.env.USER_SETTINGS_SECRET) {
+        try {
+          const plainKey = await decryptApiKey(
+            settings.encrypted_api_key as string,
+            settings.api_key_iv as string,
+            c.env.USER_SETTINGS_SECRET,
+            `user_llm_settings:${uid}`
+          );
+          const reEncrypted = await encryptApiKey(
+            plainKey,
+            c.env.USER_SETTINGS_SECRET,
+            `job_llm_snapshot:${id}`
+          );
+          encrypted_api_key_snapshot = reEncrypted.ciphertext;
+          api_key_snapshot_iv = reEncrypted.iv;
+          api_key_key_version = reEncrypted.keyVersion;
+        } catch (e) {
+          console.error("Failed to re-encrypt api key for snapshot", e);
+          return c.json({ error: 'internal_error', message: 'Failed to snapshot settings' }, 500);
+        }
       }
     }
 
@@ -292,14 +426,18 @@ app.post('/jobs', async (c) => {
       `INSERT INTO jobs (
         id, user_id, original_filename, status,
         llm_source, llm_base_url, llm_model,
-        encrypted_api_key_snapshot, api_key_snapshot_iv, api_key_key_version
-      ) VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)`
+        encrypted_api_key_snapshot, api_key_snapshot_iv, api_key_key_version,
+        owner_type, public_receipt_hash, public_client_hash, public_ip_hash,
+        public_expires_at, file_size_bytes, turnstile_verified, llm_credential_mode
+      ) VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
-      id, uid, file.name,
+      id, uid || 'public_user', file.name,
       llm_source, llm_base_url, llm_model,
-      encrypted_api_key_snapshot, api_key_snapshot_iv, api_key_key_version
+      encrypted_api_key_snapshot, api_key_snapshot_iv, api_key_key_version,
+      ownerType, publicReceiptHash, publicClientHash, publicIpHash,
+      publicExpiresAt, fileSizeBytes, turnstileVerified, llm_credential_mode
     ).run()
-    console.log("POST /jobs: created job", id)
+    console.log("POST /jobs: created job", id, "owner_type:", ownerType)
 
     // 2. Stream to PC Private API
     console.log("POST /jobs: forwarding input to private API", `/internal/files/${id}/input`)
@@ -321,6 +459,9 @@ app.post('/jobs', async (c) => {
       return c.json({ error: 'private_api_upload_failed', status: resp.status, body: privateBody }, 502)
     }
 
+    if (ownerType === 'public') {
+      return c.json({ id, status: 'queued', receipt })
+    }
     return c.json({ id, status: 'queued' })
   } catch (err) {
     console.error("POST /jobs failed", err);
@@ -331,7 +472,7 @@ app.post('/jobs', async (c) => {
   }
 })
 
-app.get('/jobs', async (c) => {
+app.get('/jobs', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const { results } = await c.env.DB.prepare(
     `SELECT * FROM jobs WHERE user_id = ? ORDER BY created_at DESC`
@@ -339,7 +480,7 @@ app.get('/jobs', async (c) => {
   return c.json(results)
 })
 
-app.get('/jobs/:id', async (c) => {
+app.get('/jobs/:id', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const id = c.req.param('id')
   const job = await c.env.DB.prepare(`SELECT * FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
@@ -347,7 +488,7 @@ app.get('/jobs/:id', async (c) => {
   return c.json(job)
 })
 
-app.get('/jobs/:id/log', async (c) => {
+app.get('/jobs/:id/log', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const id = c.req.param('id')
   const job = await c.env.DB.prepare(`SELECT * FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
@@ -364,11 +505,70 @@ app.get('/jobs/:id/log', async (c) => {
   return c.json({ data: '', next_offset: parseInt(offset) })
 })
 
-app.get('/jobs/:id/download', async (c) => {
+app.get('/jobs/:id/download', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const id = c.req.param('id')
   const job = await c.env.DB.prepare(`SELECT * FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
+  if (job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
+
+  if (job.download_expires_at) {
+    const expiresAt = new Date(job.download_expires_at as string).getTime();
+    if (Date.now() > expiresAt) {
+      return c.json({ error: 'Download expired' }, 410)
+    }
+  }
+
+  const resp = await fetchPrivateApi(c.env, `/internal/jobs/${id}/download`)
+  if (!resp.ok) {
+    return c.json({ error: 'Private API error' }, resp.status)
+  }
+  return new Response(resp.body, {
+    status: resp.status,
+    headers: resp.headers
+  })
+})
+
+
+app.get('/public/jobs/:id', async (c) => {
+  const id = c.req.param('id')
+  const receipt = c.req.query('receipt')
+  if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
+  
+  const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
+  const job = await c.env.DB.prepare(`SELECT * FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
+  if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
+  return c.json(job)
+})
+
+app.get('/public/jobs/:id/log', async (c) => {
+  const id = c.req.param('id')
+  const receipt = c.req.query('receipt')
+  if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
+
+  const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
+  const job = await c.env.DB.prepare(`SELECT * FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
+  if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
+
+  const offset = c.req.query('offset') || '0'
+  const limit = c.req.query('limit') || '65536'
+
+  const resp = await fetchPrivateApi(c.env, `/internal/jobs/${id}/log?offset=${offset}&limit=${limit}`)
+  if (resp.ok) {
+    const data = await resp.json()
+    return c.json(data)
+  }
+  return c.json({ data: '', next_offset: parseInt(offset) })
+})
+
+app.get('/public/jobs/:id/download', async (c) => {
+  const id = c.req.param('id')
+  const receipt = c.req.query('receipt')
+  if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
+
+  const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
+  const job = await c.env.DB.prepare(`SELECT * FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
+  if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   if (job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
 
   if (job.download_expires_at) {

@@ -54,6 +54,8 @@ check_env "PROXY_SECRET"
 check_env "HDD_BASE"
 check_env "WORKER_API_BASE_URL"
 check_env "USER_SETTINGS_SECRET"
+check_env "TURNSTILE_SECRET_KEY"
+check_env "PUBLIC_RATE_LIMIT_SALT"
 
 if [ ${#USER_SETTINGS_SECRET} -ne 44 ] && [ ${#USER_SETTINGS_SECRET} -ne 43 ]; then
   echo "❌ USER_SETTINGS_SECRET must be 32 bytes base64 encoded (length 43/44). Current length is: ${#USER_SETTINGS_SECRET}"
@@ -70,6 +72,7 @@ FORBIDDEN_PROD_ENVS=(
   FIREBASE_JWKS_OVERRIDE_JSON
   FIREBASE_JWKS_OVERRIDE_FILE
   FIREBASE_ISSUER_OVERRIDE
+  TURNSTILE_TEST_BYPASS
 )
 for name in "${FORBIDDEN_PROD_ENVS[@]}"; do
   if [ -n "${!name:-}" ]; then
@@ -116,6 +119,12 @@ echo "Checking remote tables..."
   echo "Checking 'user_llm_settings' table..."
   if ! npx wrangler d1 execute pdf2zh-db --remote --command "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='user_llm_settings';" | grep -q '│ 1'; then
      echo "❌ Table 'user_llm_settings' does not exist in remote DB. Did you apply migrations?"
+     exit 1
+  fi
+  
+  echo "Checking 'public_rate_limits' table..."
+  if ! npx wrangler d1 execute pdf2zh-db --remote --command "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='public_rate_limits';" | grep -q '│ 1'; then
+     echo "❌ Table 'public_rate_limits' does not exist in remote DB. Did you apply migrations (0003_add_public_jobs)?"
      exit 1
   fi
 )

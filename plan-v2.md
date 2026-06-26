@@ -37,8 +37,9 @@ PC Local Docker Network
 
 ### Phase 2: バックエンドAPIの実装
 - [ ] **Cloudflare Worker (Public API)**
-  - Firebase Admin SDK（または軽量なJWT検証）を用いたIDトークンの検証
-  - D1へのジョブ登録・状態更新・取得エンドポイント（GET/POST /api/jobs）
+  - Firebase Admin SDK（または軽量なJWT検証）を用いたIDトークンの検証（ログインユーザー用）
+  - Publicモード（未ログイン）用の `POST /jobs`, `GET /public/jobs/*` と Turnstile 検証、Rate Limit
+  - D1へのジョブ登録・状態更新・取得エンドポイント
   - PC側APIへのファイルアップロード中継（StreamまたはFormData転送）
   - ログ取得用オフセット付きポーリングエンドポイント中継
 - [ ] **PC側 Go Private API**

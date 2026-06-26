@@ -36,6 +36,14 @@
 * [ ] `PROXY_SECRET`: (48文字以上のランダム文字列)
 * [ ] `AGENT_TOKEN`: (48文字以上のランダム文字列)
 * [ ] `USER_SETTINGS_SECRET`: (32バイト以上のランダム文字列をbase64エンコードしたもの)
+* [ ] `TURNSTILE_SECRET_KEY`: (Cloudflare Turnstile Secret Key)
+* [ ] `PUBLIC_RATE_LIMIT_SALT`: (ランダムなシークレット文字列)
+* [ ] `PUBLIC_FALLBACK_LLM_API_KEY`: (Public mode用フォールバックOllama等のAPIキー)
+
+**`wrangler.toml` (vars)**:
+* [ ] `PUBLIC_FALLBACK_LLM_SOURCE`: `"openaicompatible"`
+* [ ] `PUBLIC_FALLBACK_LLM_BASE_URL`: `https://your-public-llm-url`
+* [ ] `PUBLIC_FALLBACK_LLM_MODEL`: `your-public-llm-model`
 
 ## Cloudflare Pages (Frontend)
 
@@ -48,6 +56,7 @@
 * [ ] `VITE_FIREBASE_MESSAGING_SENDER_ID`: (Firebaseから取得)
 * [ ] `VITE_FIREBASE_APP_ID`: (Firebaseから取得)
 * [ ] `VITE_FIREBASE_MEASUREMENT_ID`: (Firebaseから取得)
+* [ ] `VITE_TURNSTILE_SITE_KEY`: (Cloudflare Turnstile Site Key)
 
 **デプロイ**:
 * [ ] `npx wrangler pages deploy dist ...` でデプロイ完了していること

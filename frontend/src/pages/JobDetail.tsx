@@ -1,6 +1,6 @@
 import { createSignal, onMount, Show, onCleanup } from 'solid-js';
 import { useParams, A } from '@solidjs/router';
-import { getJob, apiFetch } from '../api';
+import { getJob, downloadJob } from '../api';
 import LogViewer from '../components/LogViewer';
 
 export default function JobDetail() {
@@ -32,7 +32,7 @@ export default function JobDetail() {
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const resp = await apiFetch(`/jobs/${job().id}/download`);
+      const resp = await downloadJob(job().id);
       const blob = await resp.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
