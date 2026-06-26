@@ -103,6 +103,24 @@ if [ ! -f "$V2_DIR/worker/schema.sql" ]; then
 fi
 echo "✅ D1 schema file exists."
 
+echo "Checking remote tables..."
+(
+  cd "$V2_DIR/worker"
+  
+  echo "Checking 'jobs' table..."
+  if ! npx wrangler d1 execute pdf2zh-db --remote --command "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='jobs';" | grep -q '│ 1'; then
+     echo "❌ Table 'jobs' does not exist in remote DB. Did you apply migrations?"
+     exit 1
+  fi
+  
+  echo "Checking 'user_llm_settings' table..."
+  if ! npx wrangler d1 execute pdf2zh-db --remote --command "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='user_llm_settings';" | grep -q '│ 1'; then
+     echo "❌ Table 'user_llm_settings' does not exist in remote DB. Did you apply migrations?"
+     exit 1
+  fi
+)
+echo "✅ Remote tables exist."
+
 # 5. cloudflared 設定確認
 echo "--- Checking cloudflared ---"
 check_env "CLOUDFLARE_TUNNEL_TOKEN"
