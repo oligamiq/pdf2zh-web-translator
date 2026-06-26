@@ -39,12 +39,18 @@
 
 ## Cloudflare Pages (Frontend)
 
-**設定箇所**: Cloudflare Dashboard > Pages > Settings > Environment variables
+**設定箇所**: `v2/frontend/.env.production.local`
 * [ ] `VITE_API_BASE_URL`: `https://your-worker-app.workers.dev`
 * [ ] `VITE_FIREBASE_API_KEY`: (Firebaseから取得)
 * [ ] `VITE_FIREBASE_AUTH_DOMAIN`: (Firebaseから取得)
 * [ ] `VITE_FIREBASE_PROJECT_ID`: (Firebaseから取得)
+* [ ] `VITE_FIREBASE_STORAGE_BUCKET`: (Firebaseから取得)
+* [ ] `VITE_FIREBASE_MESSAGING_SENDER_ID`: (Firebaseから取得)
 * [ ] `VITE_FIREBASE_APP_ID`: (Firebaseから取得)
+* [ ] `VITE_FIREBASE_MEASUREMENT_ID`: (Firebaseから取得)
+
+**デプロイ**:
+* [ ] `npx wrangler pages deploy dist ...` でデプロイ完了していること
 
 ## PC Docker (Local Host)
 

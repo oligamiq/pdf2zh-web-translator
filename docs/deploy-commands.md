@@ -54,10 +54,14 @@ npm run dev
 npm run build
 ```
 
-**Cloudflare Pages 構築設定 (ダッシュボード上)**:
-- Build command: `npm run build`
-- Output directory: `dist`
-- Root directory: `v2/frontend`
+**Cloudflare Pages Deploy (Wrangler CLI)**:
+```bash
+# プロジェクト作成 (初回のみ)
+npx wrangler pages project create pdftr-frontend --production-branch main
+
+# デプロイ
+npx wrangler pages deploy dist --project-name pdftr-frontend --branch main
+```
 
 ## PC Docker (Agent & API)
 

@@ -108,11 +108,16 @@ docker compose up -d --build
 > 期待出力: コンテナが起動し、`docker compose logs -f` でAgent loopが動いている（通信エラーになっていない）ことが確認できる。
 
 ## 13. Frontend env設定
-`v2/frontend/.env` に実値をセットします。
+`v2/frontend/.env.production.local` を作成し、実値をセットします。
 ```env
 VITE_API_BASE_URL=(手順8のWorker URL)
 VITE_FIREBASE_API_KEY=(手順3の値)
-...他
+VITE_FIREBASE_AUTH_DOMAIN=(Firebaseから取得)
+VITE_FIREBASE_PROJECT_ID=(Firebaseから取得)
+VITE_FIREBASE_STORAGE_BUCKET=(Firebaseから取得)
+VITE_FIREBASE_MESSAGING_SENDER_ID=(Firebaseから取得)
+VITE_FIREBASE_APP_ID=(Firebaseから取得)
+VITE_FIREBASE_MEASUREMENT_ID=(Firebaseから取得)
 ```
 
 ## 14. Frontend build
@@ -123,14 +128,27 @@ npm run build
 > 期待出力: `dist` フォルダにコンパイル済みの静的ファイルが出力される。
 
 ## 15. Cloudflare Pages deploy
-Cloudflare Dashboardから Pages を新規作成し、GitHub連携またはDirect Upload等で `v2/frontend/dist` をデプロイします。
+Wrangler CLI を用いてデプロイします。
+```bash
+cd v2/frontend
+# 初回のみプロジェクト作成
+npx wrangler pages project create pdftr-frontend --production-branch main
+
+# デプロイ実行
+npx wrangler pages deploy dist --project-name pdftr-frontend --branch main
+```
+> 出力された Pages URL を控え、Firebase Console の Authorized domains に追加してください。
 
 ## 16. 本番E2Eテスト
-1. ブラウザで Pages のURLにアクセスします。
-2. Googleログインを実行します。
-3. PDFをアップロードし、「queued」から「running」に遷移することを確認します。
-4. ログ画面で処理中のログがポーリング表示されることを確認します。
-5. 「succeeded」になったら「Download ZIP」ボタンをクリックし、ZIPがダウンロードされることを確認します。
+Pages URLをブラウザで開いて、以下を確認してください。
+1. Firebaseでログインできる
+2. Settings画面でLLM設定を保存できる
+3. API Key本体が再表示されない
+4. PDFを1件アップロードできる
+5. jobs一覧にqueued/running/succeededが出る
+6. logが読める
+7. 完了後にdownloadできる
+8. ZIP内にPDFが入っている
 
 **CUIベースでのテスト (Firebase Auth Mode E2E)**:
 手元での本番前確認として、`scripts/e2e-firebase-real-auth-smoke.sh` を用いたE2Eテストが可能です。
