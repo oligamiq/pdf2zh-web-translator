@@ -9,10 +9,20 @@ async function getToken() {
 
   const e2eToken = isE2EAuthBypassEnabled ? sessionStorage.getItem('e2e_token') : null;
   if (e2eToken) return e2eToken;
-  const user = auth.currentUser;
-  if (!user) return null;
-  return user.getIdToken();
+  return auth.currentUser ? await auth.currentUser.getIdToken() : null;
 }
+
+export function isAuthenticated(): boolean {
+  const isE2EAuthBypassEnabled =
+    import.meta.env.MODE === 'e2e' &&
+    import.meta.env.VITE_E2E_AUTH_BYPASS === 'true';
+
+  if (isE2EAuthBypassEnabled && sessionStorage.getItem('e2e_token')) {
+    return true;
+  }
+  return !!auth.currentUser;
+}
+
 export async function logout() {
   await auth.signOut();
 }

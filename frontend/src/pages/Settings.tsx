@@ -1,7 +1,6 @@
 import { createSignal, onMount, Show } from 'solid-js';
 import { A } from '@solidjs/router';
-import { getLlmSettings, updateLlmSettings, clearLlmApiKey } from '../api';
-import { auth } from '../firebase';
+import { getLlmSettings, updateLlmSettings, clearLlmApiKey, isAuthenticated } from '../api';
 
 export default function Settings() {
   const [loading, setLoading] = createSignal(true);
@@ -15,7 +14,7 @@ export default function Settings() {
   const [hasApiKey, setHasApiKey] = createSignal(false);
 
   onMount(async () => {
-    if (!auth.currentUser) {
+    if (!isAuthenticated()) {
       setLoading(false);
       return;
     }
@@ -82,13 +81,13 @@ export default function Settings() {
       </div>
 
       <Show when={!loading()} fallback={<div class="p-4 text-gray-400">Loading settings...</div>}>
-        <Show when={!auth.currentUser}>
+        <Show when={!isAuthenticated()}>
           <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
             <h2 class="text-xl text-blue-400 font-bold mb-2">Settings are available after signing in.</h2>
             <p class="text-gray-300">For guest mode, enter an API key on the upload form for one-time use.</p>
           </div>
         </Show>
-        <Show when={auth.currentUser}>
+        <Show when={isAuthenticated()}>
           <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
           
           <Show when={message()}>

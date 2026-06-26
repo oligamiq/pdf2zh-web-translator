@@ -7,6 +7,7 @@ test.describe('Settings LLM UI', () => {
     // 1. Bypass auth via sessionStorage
     await page.addInitScript(() => {
       window.sessionStorage.setItem('e2e_token', 'mock_token');
+      window.sessionStorage.setItem('e2e_user_email', 'e2e@example.com');
     });
 
     // Mock GET /jobs for dashboard

@@ -92,20 +92,15 @@ test.describe('Public Upload UI', () => {
       await dialog.dismiss(); // dismiss to test entering key later
     });
 
-    // Create a dummy PDF file
-    const fileChooserPromise = page.waitForEvent('filechooser');
-    // Click on the upload zone
-    await page.locator('text=Drag and drop or click to select PDF file').click();
-    
-    const fileChooser = await fileChooserPromise;
-    await fileChooser.setFiles({
-      name: 'test.pdf',
-      mimeType: 'application/pdf',
-      buffer: Buffer.from('dummy pdf content')
-    });
-
     // Wait a bit for Turnstile and logic
     await page.waitForTimeout(500);
+
+    // Set file directly
+    await page.getByTestId('pdf-file-input').setInputFiles({
+      name: 'test.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n% dummy pdf\n%%EOF\n')
+    });
 
     // Dialog should have been handled
     expect(dialogHandled).toBeTruthy();
@@ -115,13 +110,10 @@ test.describe('Public Upload UI', () => {
     await page.fill('input[placeholder="sk-..."]', 'my-secret-key');
 
     // Trigger upload again
-    const fileChooserPromise2 = page.waitForEvent('filechooser');
-    await page.locator('text=Drag and drop or click to select PDF file').click();
-    const fileChooser2 = await fileChooserPromise2;
-    await fileChooser2.setFiles({
+    await page.getByTestId('pdf-file-input').setInputFiles({
       name: 'test.pdf',
       mimeType: 'application/pdf',
-      buffer: Buffer.from('dummy pdf content')
+      buffer: Buffer.from('%PDF-1.4\n% dummy pdf\n%%EOF\n')
     });
 
     // Wait for the job list to reload and fetch the job

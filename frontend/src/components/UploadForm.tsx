@@ -147,6 +147,7 @@ export default function UploadForm() {
         <div style="text-align: center; padding: 40px; border: 2px dashed var(--border); position: relative; cursor: pointer;">
           <p style="color: var(--text-muted); pointer-events: none;">Drag and drop or click to select PDF file</p>
           <input 
+            data-testid="pdf-file-input"
             type="file" 
             accept="application/pdf"
             onChange={handleFileChange} 
