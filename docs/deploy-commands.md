@@ -95,7 +95,8 @@ npx wrangler vpc service create pdf2zh-pc-api \
 # 4. wrangler config に vpc_services 追記
 # [[vpc_services]]
 # binding = "PC_API_VPC"
-# service_id = "<PC_API_VPC_SERVICE_ID>"
+# service_id = "019f02f0-2940-7b92-9fed-02b6a692f41f"
+# remote = true
 
 # 5. VPC 疎通確認
 ./scripts/prod-vpc-smoke.sh

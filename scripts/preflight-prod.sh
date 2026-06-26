@@ -125,6 +125,28 @@ if ! grep -q '\[\[d1_databases\]\]' "$WORKER_TOML"; then
   echo "❌ wrangler.toml must contain a D1 binding ([[d1_databases]])"
   exit 1
 fi
+
+echo "--- Checking VPC Service Binding ---"
+if ! grep -q '\[\[vpc_services\]\]' "$WORKER_TOML"; then
+  echo "❌ wrangler.toml must contain a VPC Service binding ([[vpc_services]])"
+  exit 1
+fi
+if ! grep -q 'binding = "PC_API_VPC"' "$WORKER_TOML"; then
+  echo "❌ wrangler.toml must set binding = \"PC_API_VPC\""
+  exit 1
+fi
+
+VPC_SERVICE_ID=$(grep -E '^\s*service_id\s*=' "$WORKER_TOML" | cut -d '"' -f 2)
+if [ -z "$VPC_SERVICE_ID" ]; then
+  echo "❌ vpc_services.service_id is empty or missing in wrangler.toml"
+  exit 1
+fi
+
+if [[ "$VPC_SERVICE_ID" =~ placeholder|TODO|\<.*SERVICE.*\>|^$ ]]; then
+  echo "❌ vpc_services.service_id is still a placeholder: $VPC_SERVICE_ID"
+  exit 1
+fi
+echo "✅ VPC Service binding is correctly configured."
 (
   cd "$V2_DIR/worker"
   echo "Installing worker deps..."
