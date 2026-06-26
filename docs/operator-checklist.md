@@ -1,0 +1,71 @@
+# Operator Checklist
+
+本番環境（Cloudflare / Firebase / PC Host）構築時に設定すべき値のチェックリストです。
+
+## Firebase
+
+**取得方法**: Firebase Console > Project settings > General > Your apps (Web)
+* [ ] `VITE_FIREBASE_API_KEY`: 
+* [ ] `VITE_FIREBASE_AUTH_DOMAIN`: `<project-id>.firebaseapp.com`
+* [ ] `VITE_FIREBASE_PROJECT_ID`: `<project-id>`
+* [ ] `VITE_FIREBASE_APP_ID`: 
+
+**設定作業**:
+* [ ] Firebase Authentication (Google Sign-in) の有効化
+* [ ] **Authorized domains** (Authentication > Settings > Authorized domains) に `your-frontend-app.pages.dev` (Cloudflare Pages URL) を追加する。
+
+## Cloudflare Worker
+
+**取得・生成方法**:
+- `FIREBASE_PROJECT_ID`: Firebase Console から取得
+- `PROXY_SECRET`, `AGENT_TOKEN`: 以下のコマンド等で生成
+  ```bash
+  openssl rand -base64 48
+  ```
+
+**`wrangler.toml` (vars / bindings)**:
+* [ ] `FIREBASE_PROJECT_ID`: `<project-id>`
+* [ ] `CORS_ORIGIN`: `https://your-frontend-app.pages.dev`
+* [ ] `AUTH_MODE`: `"firebase"`
+* [ ] `database_id` (D1): `wrangler d1 create` 時の UUID
+* [ ] Workers VPC service binding名 (Tunnel宛): `PDF2ZH_PRIVATE_API` (例)
+
+**`wrangler secret put` (秘密値)**:
+* [ ] `PROXY_SECRET`: (生成したランダム文字列)
+* [ ] `AGENT_TOKEN`: (生成したランダム文字列)
+
+## Cloudflare Pages (Frontend)
+
+**設定箇所**: Cloudflare Dashboard > Pages > Settings > Environment variables
+* [ ] `VITE_API_BASE_URL`: `https://your-worker-app.workers.dev`
+* [ ] `VITE_FIREBASE_API_KEY`: (Firebaseから取得)
+* [ ] `VITE_FIREBASE_AUTH_DOMAIN`: (Firebaseから取得)
+* [ ] `VITE_FIREBASE_PROJECT_ID`: (Firebaseから取得)
+* [ ] `VITE_FIREBASE_APP_ID`: (Firebaseから取得)
+
+## PC Docker (Local Host)
+
+**設定箇所**: `v2/.env`
+* [ ] `HDD_BASE`: `/mnt/hdd/pdf2zh-web` など実在するパス
+* [ ] `PROXY_SECRET`: (Workerのsecretと同じ値)
+* [ ] `AGENT_TOKEN`: (Workerのsecretと同じ値)
+* [ ] `WORKER_API_BASE_URL`: `https://your-worker-app.workers.dev`
+* [ ] `PDF2ZH_DEFAULT_BASE_URL`: `https://ollama.com/v1` 等
+* [ ] `PDF2ZH_DEFAULT_MODEL`: `gemma4:31b-cloud` 等
+* [ ] `PDF2ZH_DEFAULT_API_KEY`: (Ollama等のAPIキー)
+* [ ] `CLOUDFLARED_TUNNEL_TOKEN`: `cloudflared tunnel token <tunnel-name>` で取得したトークン
+
+## 最終チェック (Production Preflight)
+
+すべての設定値や環境変数、ディレクトリを埋め終わったら、破壊的操作を伴わない以下のスクリプトで安全にチェックできます。
+```bash
+cd /srv/pdf2zh-web/v2
+./scripts/preflight-prod.sh
+```
+> `=== Production Preflight Passed ===` が出れば準備完了です。
+
+## Firebase Auth Mode テストについて
+
+Firebase Auth環境の動作確認として2種類のE2Eテストが存在します。詳細は `docs/firebase-auth-test.md` を参照してください。
+* **Local Firebase JWT E2E** (`scripts/e2e-firebase-local-smoke.sh`): CI向け。外部依存なくローカルでJWT検証と他人のジョブへのアクセス禁止を検証します。
+* **Real Firebase Auth E2E** (`scripts/e2e-firebase-real-auth-smoke.sh`): 手元での本番前確認用。外部Firebaseと専用テストユーザー（本番ユーザー不可）を使用します。token/password/API keyはログ出力禁止です。

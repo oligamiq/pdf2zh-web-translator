@@ -1,0 +1,134 @@
+# Production E2E Runbook
+
+本番のCloudflare / Firebase 環境に実値を投入して E2E テストを行うための手順書です。
+上から順番に実行してください。
+
+## 1. Firebase project作成
+Firebase Consoleで新しいプロジェクトを作成します。
+
+## 2. Firebase Auth Google login有効化
+Firebase Console > Authentication > Sign-in method で **Google** を有効にします。
+
+## 3. Firebase frontend env取得
+Firebase Console > Project settings > General > Your apps (Web) から設定情報を取得します。
+* `apiKey` -> `VITE_FIREBASE_API_KEY`
+* `authDomain` -> `VITE_FIREBASE_AUTH_DOMAIN`
+* `projectId` -> `VITE_FIREBASE_PROJECT_ID`
+* `appId` -> `VITE_FIREBASE_APP_ID`
+
+## 4. Firebase Authorized domains設定
+Firebase Console > Authentication > Settings > Authorized domains に、後ほどCloudflare Pagesで割り当てられるドメイン（例: `your-app.pages.dev`）を追加します。
+
+## 5. Cloudflare D1作成
+```bash
+npx wrangler d1 create pdf2zh-prod
+```
+> 期待出力: `database_id` (UUID) が表示されます。これをメモしてください。
+
+## 6. D1 migration remote適用
+`v2/worker/wrangler.toml` に `database_id` をセットしてから実行します。
+```bash
+npx wrangler d1 execute pdf2zh-db --remote --file=./schema.sql
+```
+> 期待出力: `3 commands executed successfully.` 等の成功メッセージ。
+
+## 7. Worker secrets投入
+ランダム文字列を生成して投入します。
+```bash
+openssl rand -base64 48 | npx wrangler secret put PROXY_SECRET
+openssl rand -base64 48 | npx wrangler secret put AGENT_TOKEN
+```
+> 期待出力: `Successfully created secret for key PROXY_SECRET/AGENT_TOKEN`
+
+## 8. Worker deploy
+`v2/worker/wrangler.toml` の `AUTH_MODE="firebase"` および `FIREBASE_PROJECT_ID` 等が正しく設定されているか確認し、デプロイします。
+```bash
+cd v2/worker
+npm run deploy
+```
+> 期待出力: デプロイ先のWorker URL（`https://your-worker.workers.dev`）が表示されます。
+
+## 9. Workers VPC service / cloudflared connector設定
+* Cloudflare Zero Trust DashboardからTunnelを作成し、Tokenを取得します。
+* （VPC Service Bindingを使用する場合は `wrangler.toml` の `[[services]]` を設定して再デプロイします。）
+
+## 10. PC側 `.env` 作成
+`v2/.env` を作成または編集し、以下の実値をセットします。
+```env
+WORKER_API_BASE_URL=(手順8のWorker URL)
+HDD_BASE=/mnt/hdd/pdf2zh-web
+PROXY_SECRET=(手順7でセットした値)
+AGENT_TOKEN=(手順7でセットした値)
+PDF2ZH_DEFAULT_BASE_URL=https://ollama.com/v1
+PDF2ZH_DEFAULT_MODEL=gemma4:31b-cloud
+PDF2ZH_DEFAULT_API_KEY=(Ollama互換等のAPIキー)
+CLOUDFLARED_TUNNEL_TOKEN=(手順9のトンネルトークン)
+```
+
+## 11. HDDディレクトリ作成
+PCのホスト側でデータディレクトリを作成します。
+```bash
+mkdir -p /mnt/hdd/pdf2zh-web/data/uploads
+mkdir -p /mnt/hdd/pdf2zh-web/data/outputs
+mkdir -p /mnt/hdd/pdf2zh-web/data/logs
+mkdir -p /mnt/hdd/pdf2zh-web/data/work
+mkdir -p /mnt/hdd/pdf2zh-web/data/cache
+mkdir -p /mnt/hdd/pdf2zh-web/data/tmp
+```
+
+## 11.5. Production Preflight Check
+全ての実値設定とディレクトリ作成が完了したら、デプロイや起動の前に設定漏れがないか確認します。
+```bash
+cd /srv/pdf2zh-web/v2
+./scripts/preflight-prod.sh
+```
+> 期待出力: `=== Production Preflight Passed ===`
+
+## 12. Docker compose build / up
+```bash
+cd v2
+docker compose up -d --build
+```
+> 期待出力: コンテナが起動し、`docker compose logs -f` でAgent loopが動いている（通信エラーになっていない）ことが確認できる。
+
+## 13. Frontend env設定
+`v2/frontend/.env` に実値をセットします。
+```env
+VITE_API_BASE_URL=(手順8のWorker URL)
+VITE_FIREBASE_API_KEY=(手順3の値)
+...他
+```
+
+## 14. Frontend build
+```bash
+cd v2/frontend
+npm run build
+```
+> 期待出力: `dist` フォルダにコンパイル済みの静的ファイルが出力される。
+
+## 15. Cloudflare Pages deploy
+Cloudflare Dashboardから Pages を新規作成し、GitHub連携またはDirect Upload等で `v2/frontend/dist` をデプロイします。
+
+## 16. 本番E2Eテスト
+1. ブラウザで Pages のURLにアクセスします。
+2. Googleログインを実行します。
+3. PDFをアップロードし、「queued」から「running」に遷移することを確認します。
+4. ログ画面で処理中のログがポーリング表示されることを確認します。
+5. 「succeeded」になったら「Download ZIP」ボタンをクリックし、ZIPがダウンロードされることを確認します。
+
+**CUIベースでのテスト (Firebase Auth Mode E2E)**:
+手元での本番前確認として、`scripts/e2e-firebase-real-auth-smoke.sh` を用いたE2Eテストが可能です。
+- 専用のテストユーザーアカウント（本番ユーザーは不可）を用意してください。
+- 実行時のtoken、パスワード、API keyは決してログに出力されない仕様になっています。
+- このテストでは、Firebase Auth環境でのJWT検証と、他人のジョブへのアクセス（UID分離）が不可能であることが検証されます。
+- 一方、CI向けには外部Firebase不要の `scripts/e2e-firebase-local-smoke.sh` を使用してください。
+
+## 17. 失敗時の切り分け
+* **ログインできない**: FirebaseのAuthorized domains設定、または `VITE_FIREBASE_*` 環境変数の誤り。
+* **アップロード失敗 (500)**: PC APIとのTunnel接続が確立されていないか、PROXY_SECRETが一致していません。
+* **ジョブがqueuedのまま**: PC側の `agentLoop` が落ちているか、`AGENT_TOKEN` が一致していません。`docker compose logs -f` を確認。
+
+---
+※ **ZIPダウンロードと期限について**:
+現仕様ではフロントのボタンは「ZIPをダウンロード」であり、APIは `application/zip` を返します。完了から7日経過したものはD1上で期限判定が行われ、`410 Gone` が返ります。
+HDD側のファイル実体のcleanupロジックは今回未実装のため、将来的にcron等による自動削除設定を行ってください。

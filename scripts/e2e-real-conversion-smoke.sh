@@ -252,7 +252,7 @@ for i in $(seq 1 30); do
     exit 1
   fi
 
-  status="$(curl -sS -o "$TMP_DIR/worker-health-body.txt" -w "%{http_code}" "${WORKER_HOST_URL}/healthz" || true)"
+  status="$(curl -sS -o "$TMP_DIR/worker-health-body.txt" -w "%{http_code}" "${WORKER_HOST_URL}/healthz" 2>"$TMP_DIR/worker-health.err" || true)"
   
   RUN_ID_OK="0"
   if [ "$status" = "200" ]; then

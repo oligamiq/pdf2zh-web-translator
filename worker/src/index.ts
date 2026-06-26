@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { createRemoteJWKSet, jwtVerify } from 'jose'
+import { createRemoteJWKSet, jwtVerify, createLocalJWKSet } from 'jose'
 
 export type Env = {
   DB: D1Database;
@@ -75,7 +75,7 @@ app.get('/healthz', (c) => {
 const JWKS_URI = 'https://www.googleapis.com/robot/v1/metadata/jwk/securetoken@system.gserviceaccount.com'
 const JWKS = createRemoteJWKSet(new URL(JWKS_URI))
 
-async function verifyFirebaseToken(token: string, projectId: string, authMode: string): Promise<string> {
+async function verifyFirebaseToken(token: string, projectId: string, authMode: string, env: Env): Promise<string> {
   if (!token) throw new Error("No token")
   if (authMode === 'mock') {
     if (token.startsWith('mock-')) return 'mock-user-123'
@@ -83,8 +83,20 @@ async function verifyFirebaseToken(token: string, projectId: string, authMode: s
   }
   
   try {
-    const { payload } = await jwtVerify(token, JWKS, {
-      issuer: `https://securetoken.google.com/${projectId}`,
+    let jwks;
+    // @ts-ignore
+    if (env.FIREBASE_JWKS_OVERRIDE_JSON) {
+      // @ts-ignore
+      jwks = createLocalJWKSet(JSON.parse(env.FIREBASE_JWKS_OVERRIDE_JSON))
+    } else {
+      jwks = JWKS
+    }
+    
+    // @ts-ignore
+    let issuer = env.FIREBASE_ISSUER_OVERRIDE || `https://securetoken.google.com/${projectId}`;
+
+    const { payload } = await jwtVerify(token, jwks, {
+      issuer: issuer,
       audience: projectId,
     })
     
@@ -107,7 +119,7 @@ app.use('/jobs/*', async (c, next) => {
   }
   const token = authHeader.split(' ')[1]
   try {
-    const uid = await verifyFirebaseToken(token, c.env.FIREBASE_PROJECT_ID, c.env.AUTH_MODE || 'firebase')
+    const uid = await verifyFirebaseToken(token, c.env.FIREBASE_PROJECT_ID, c.env.AUTH_MODE || 'firebase', c.env)
     c.set('uid', uid)
     await next()
   } catch (e) {
