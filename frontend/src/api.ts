@@ -3,6 +3,12 @@ import { auth } from './firebase';
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 async function getToken() {
+  const isE2EAuthBypassEnabled =
+    import.meta.env.MODE === 'e2e' &&
+    import.meta.env.VITE_E2E_AUTH_BYPASS === 'true';
+
+  const e2eToken = isE2EAuthBypassEnabled ? sessionStorage.getItem('e2e_token') : null;
+  if (e2eToken) return e2eToken;
   const user = auth.currentUser;
   if (!user) return null;
   return user.getIdToken();

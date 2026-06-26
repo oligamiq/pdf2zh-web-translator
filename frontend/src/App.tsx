@@ -11,6 +11,17 @@ export default function App(props: { children?: JSX.Element }) {
   const [loading, setLoading] = createSignal(true);
 
   onMount(() => {
+    const isE2EAuthBypassEnabled =
+      import.meta.env.MODE === 'e2e' &&
+      import.meta.env.VITE_E2E_AUTH_BYPASS === 'true';
+
+    if (isE2EAuthBypassEnabled && sessionStorage.getItem('e2e_token')) {
+      setUser({ uid: 'e2e-user' } as User);
+      setLoading(false);
+      const path = window.location.pathname;
+      if (path === '/login') navigate('/', { replace: true });
+      return () => {};
+    }
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
