@@ -4,8 +4,15 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/
 const isE2E = import.meta.env.MODE === 'e2e';
 
 if (!isE2E) {
-  if (!import.meta.env.VITE_FIREBASE_API_KEY) {
+  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+  if (!apiKey) {
     throw new Error('VITE_FIREBASE_API_KEY is required in production');
+  }
+  if (apiKey.includes('<Firebase Web API Key>') || apiKey.includes('dummy') || apiKey.includes('placeholder')) {
+    throw new Error('VITE_FIREBASE_API_KEY contains a placeholder value');
+  }
+  if (!apiKey.startsWith('AIza')) {
+    throw new Error('VITE_FIREBASE_API_KEY must start with AIza');
   }
 }
 
