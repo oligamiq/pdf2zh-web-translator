@@ -532,8 +532,8 @@ func main() {
 		mux.ServeHTTP(w, r)
 	})
 
-	log.Println("PC API starting on :8081")
-	if err := http.ListenAndServe(":8081", verifySecret(loggingMux)); err != nil {
+	log.Println("PC API starting on 0.0.0.0:8080")
+	if err := http.ListenAndServe("0.0.0.0:8080", verifySecret(loggingMux)); err != nil {
 		log.Fatal(err)
 	}
 }
