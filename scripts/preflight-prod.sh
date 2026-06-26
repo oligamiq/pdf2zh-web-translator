@@ -125,6 +125,20 @@ if ! grep -q '\[\[d1_databases\]\]' "$WORKER_TOML"; then
   echo "❌ wrangler.toml must contain a D1 binding ([[d1_databases]])"
   exit 1
 fi
+D1_DB_ID=$(grep -E '^\s*database_id\s*=' "$WORKER_TOML" | cut -d '"' -f 2)
+if [ -z "$D1_DB_ID" ]; then
+  echo "❌ d1_databases.database_id is empty or missing in wrangler.toml"
+  exit 1
+fi
+if [[ "$D1_DB_ID" =~ placeholder|TODO|\<.*DB.*\>|your-d1-uuid-here ]]; then
+  echo "❌ d1_databases.database_id is still a placeholder: $D1_DB_ID"
+  exit 1
+fi
+if ! [[ "$D1_DB_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+  echo "❌ d1_databases.database_id is not a valid UUID: $D1_DB_ID"
+  exit 1
+fi
+echo "✅ D1 database_id is configured correctly."
 
 echo "--- Checking VPC Service Binding ---"
 if ! grep -q '\[\[vpc_services\]\]' "$WORKER_TOML"; then

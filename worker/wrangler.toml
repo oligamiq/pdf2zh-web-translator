@@ -1,11 +1,11 @@
-name = "pdf2zh-worker"
+name = "pdftr"
 main = "src/index.ts"
 compatibility_date = "2024-04-05"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "pdf2zh-db"
-database_id = "your-d1-uuid-here"
+database_id = "6c78dfca-f345-4a66-89a3-5fe72b1bb043"
 
 [[vpc_services]]
 binding = "PC_API_VPC"
@@ -14,7 +14,7 @@ remote = true
 [vars]
 CORS_ORIGIN = "*"
 AUTH_MODE = "firebase" # Set to "firebase" in production
-FIREBASE_PROJECT_ID = ""
+FIREBASE_PROJECT_ID = "pdf2zh-tr"
 # Secrets (PROXY_SECRET, AGENT_TOKEN, etc.) should be set via:
 # wrangler secret put PROXY_SECRET
 # Or locally via .dev.vars
