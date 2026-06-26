@@ -136,6 +136,9 @@ export default function UploadForm() {
           </div>
           
           <div id="turnstile-container" style="margin-top: 16px;"></div>
+          <Show when={turnstileToken()}>
+            <div data-testid="turnstile-ready" style="display: none;"></div>
+          </Show>
         </div>
       </Show>
 

@@ -92,8 +92,8 @@ test.describe('Public Upload UI', () => {
       await dialog.dismiss(); // dismiss to test entering key later
     });
 
-    // Wait a bit for Turnstile and logic
-    await page.waitForTimeout(500);
+    // Wait for Turnstile token to be ready
+    await expect(page.getByTestId('turnstile-ready')).toBeAttached();
 
     // Set file directly
     await page.getByTestId('pdf-file-input').setInputFiles({
