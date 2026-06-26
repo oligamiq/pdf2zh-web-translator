@@ -103,19 +103,33 @@ export default function UploadForm() {
             </div>
             
             <details style="margin-top: 8px; font-size: 13px;">
-              <summary style="cursor: pointer; color: var(--accent);">How to get an Ollama API key?</summary>
-              <div style="margin-top: 8px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 4px;">
-                <ol style="margin: 0; padding-left: 20px;">
+              <summary style="cursor: pointer; color: var(--accent); display: inline-flex; align-items: center; gap: 4px;">
+                <span style="display: inline-block; width: 16px; height: 16px; text-align: center; border-radius: 50%; background: var(--accent); color: white; line-height: 16px; font-size: 11px;">?</span>
+                How to get an Ollama API key
+              </summary>
+              <div style="margin-top: 8px; padding: 16px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--border);">
+                <ol style="margin: 0 0 16px 0; padding-left: 24px; line-height: 1.6;">
                   <li>Ollamaにログインします</li>
-                  <li>API Keys settingsを開きます</li>
-                  <li>Create API Keyを押します</li>
+                  <li>上部メニューの <strong>Keys</strong> を開きます</li>
+                  <li><strong>Add API Key</strong> を押してキーを作成します</li>
                   <li>表示されたキーをコピーします</li>
-                  <li>この画面の "Ollama API Key" に貼り付けます</li>
+                  <li>このアプリの “Ollama API Key” 欄に貼り付けます</li>
                 </ol>
-                <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
-                  <img src="/guide/ollama-api-key-1.png" alt="Step 1" style="height: 100px; border-radius: 4px; border: 1px solid var(--border);" onError={(e) => e.currentTarget.style.display='none'} />
-                  <img src="/guide/ollama-api-key-2.png" alt="Step 2" style="height: 100px; border-radius: 4px; border: 1px solid var(--border);" onError={(e) => e.currentTarget.style.display='none'} />
-                  <img src="/guide/ollama-api-key-3.png" alt="Step 3" style="height: 100px; border-radius: 4px; border: 1px solid var(--border);" onError={(e) => e.currentTarget.style.display='none'} />
+                
+                <div style="background: rgba(59, 130, 246, 0.1); padding: 12px; border-radius: 4px; border-left: 3px solid var(--accent); margin-bottom: 16px;">
+                  <p style="margin: 0 0 8px 0; line-height: 1.5;">APIキーなしでもお試し変換はできますが、無料/共有枠を使うため、混雑時や制限到達時に失敗することがあります。</p>
+                  <p style="margin: 0; line-height: 1.5;">安定して使うには、自分のOllama API keyを入力してください。</p>
+                </div>
+
+                <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 16px;">
+                  <div style="flex: 1; min-width: 200px;">
+                    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Keys タブの場所</div>
+                    <img src="/guide/ollama-api-key-keys.png" alt="Ollama API Keys UI" style="max-width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.2);" onError={(e) => e.currentTarget.style.display='none'} />
+                  </div>
+                  <div style="flex: 1; min-width: 200px;">
+                    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">無料枠・使用量の制限</div>
+                    <img src="/guide/ollama-cloud-usage.png" alt="Ollama Usage Limits" style="max-width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.2);" onError={(e) => e.currentTarget.style.display='none'} />
+                  </div>
                 </div>
               </div>
             </details>
