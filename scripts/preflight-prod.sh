@@ -198,6 +198,29 @@ if [[ "$VPC_SERVICE_ID" =~ placeholder|TODO|\<.*SERVICE.*\>|^$ ]]; then
   exit 1
 fi
 echo "✅ VPC Service binding is correctly configured."
+
+echo "--- Checking Public Fallback LLM ---"
+FALLBACK_ENABLED=$(grep -E '^\s*PUBLIC_FALLBACK_LLM_ENABLED\s*=' "$WORKER_TOML" | cut -d '"' -f 2 || echo "")
+if [ "$FALLBACK_ENABLED" = "true" ]; then
+  echo "Public Fallback LLM is ENABLED. Checking configurations..."
+  
+  FALLBACK_SOURCE=$(grep -E '^\s*PUBLIC_FALLBACK_LLM_SOURCE\s*=' "$WORKER_TOML" | cut -d '"' -f 2 || echo "")
+  FALLBACK_BASE_URL=$(grep -E '^\s*PUBLIC_FALLBACK_LLM_BASE_URL\s*=' "$WORKER_TOML" | cut -d '"' -f 2 || echo "")
+  FALLBACK_MODEL=$(grep -E '^\s*PUBLIC_FALLBACK_LLM_MODEL\s*=' "$WORKER_TOML" | cut -d '"' -f 2 || echo "")
+  
+  if [ -z "$FALLBACK_SOURCE" ] || [ -z "$FALLBACK_BASE_URL" ] || [ -z "$FALLBACK_MODEL" ]; then
+    echo "❌ PUBLIC_FALLBACK_LLM_ENABLED is true, but SOURCE, BASE_URL or MODEL are missing in wrangler.toml [vars]"
+    exit 1
+  fi
+  
+  if [[ "$FALLBACK_SOURCE" == "openaicompatible" || "$FALLBACK_SOURCE" == "gemini" ]]; then
+    echo "⚠️ Note: $FALLBACK_SOURCE requires PUBLIC_FALLBACK_LLM_API_KEY. Ensure it is set via 'wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY'"
+  fi
+  echo "✅ Public Fallback LLM configuration looks good."
+else
+  echo "✅ Public Fallback LLM is DISABLED (PUBLIC_FALLBACK_LLM_ENABLED is false or not true)."
+fi
+
 (
   cd "$V2_DIR/worker"
   echo "Installing worker deps..."

@@ -38,13 +38,29 @@ echo "--- 3. Testing Turnstile check ---"
 # If turnstile is not provided or fails, should be 403. Let's test with empty turnstile if mock is active, wait, mock just returns true for testBypass='true'.
 # Actually, the API says if testBypass is true it always returns true. We can skip this if we can't test it locally without changing code.
 
-echo "--- 4. Testing POST /jobs (Public) ---"
+echo "--- 4. Testing POST /jobs (Public, No Key) ---"
 resp=$(curl -s -w "\n%{http_code}" -X POST -F "pdf=@test_public.pdf" -F "turnstile=dummy-token" "$WORKER_URL/jobs")
 body=$(echo "$resp" | head -n -1)
 code=$(echo "$resp" | tail -n 1)
 
+if [ "$code" == "200" ]; then
+  # Fallback must be ENABLED in this worker if it succeeded.
+  echo "✅ Public job created (Fallback ENABLED): $(echo "$body" | jq -r .id)"
+elif [ "$code" == "503" ]; then
+  # Fallback must be DISABLED or misconfigured in this worker.
+  echo "✅ Public job failed with 503 (Fallback DISABLED/misconfigured): $body"
+else
+  echo "❌ Expected 200 or 503 for public upload, got $code: $body"
+  exit 1
+fi
+
+echo "--- 4b. Testing POST /jobs (Public, With request_once API Key) ---"
+resp=$(curl -s -w "\n%{http_code}" -X POST -F "pdf=@test_public.pdf" -F "turnstile=dummy-token" -F "api_key=test-api-key" "$WORKER_URL/jobs")
+body=$(echo "$resp" | head -n -1)
+code=$(echo "$resp" | tail -n 1)
+
 if [ "$code" != "200" ]; then
-  echo "❌ Expected 200 for public upload, got $code: $body"
+  echo "❌ Expected 200 for public upload with API key, got $code: $body"
   exit 1
 fi
 job_id=$(echo "$body" | jq -r .id)
@@ -75,10 +91,10 @@ echo "✅ GET with receipt returned 200"
 echo "--- 7. Testing rate limits (client hash) ---"
 # Because we already did 1 request, the next from the same client should be 429
 # Wait, curl without client_id sends empty, we can test with client_id=testclient
-resp=$(curl -s -w "\n%{http_code}" -X POST -F "pdf=@test_public.pdf" -F "turnstile=dummy-token" -F "client_id=testclient" "$WORKER_URL/jobs")
+resp=$(curl -s -w "\n%{http_code}" -X POST -F "pdf=@test_public.pdf" -F "turnstile=dummy-token" -F "api_key=test-api-key" -F "client_id=testclient" "$WORKER_URL/jobs")
 code=$(echo "$resp" | tail -n 1)
 if [ "$code" == "200" ]; then
-  resp2=$(curl -s -w "\n%{http_code}" -X POST -F "pdf=@test_public.pdf" -F "turnstile=dummy-token" -F "client_id=testclient" "$WORKER_URL/jobs")
+  resp2=$(curl -s -w "\n%{http_code}" -X POST -F "pdf=@test_public.pdf" -F "turnstile=dummy-token" -F "api_key=test-api-key" -F "client_id=testclient" "$WORKER_URL/jobs")
   code2=$(echo "$resp2" | tail -n 1)
   if [ "$code2" != "429" ]; then
     echo "❌ Expected 429 for second request from same client_id, got $code2"

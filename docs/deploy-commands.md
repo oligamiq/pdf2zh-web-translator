@@ -44,6 +44,9 @@ npx wrangler secret put USER_SETTINGS_SECRET
 npx wrangler secret put TURNSTILE_SECRET_KEY
 npx wrangler secret put PUBLIC_RATE_LIMIT_SALT
 npx wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY
+# (Note: APIキーなしの public fallback を有効にするには、wrangler.toml の vars で
+# PUBLIC_FALLBACK_LLM_ENABLED="true" とし、SOURCE, BASE_URL, MODEL も設定する必要があります。
+# 未設定の場合は自動的にフォールバックが無効化され、利用できません)
 ```
 
 ## Frontend (SolidJS)

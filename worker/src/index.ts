@@ -19,6 +19,7 @@ export type Env = {
   TURNSTILE_TEST_BYPASS?: string;
   PUBLIC_RATE_LIMIT_SALT?: string;
 
+  PUBLIC_FALLBACK_LLM_ENABLED?: string;
   PUBLIC_FALLBACK_LLM_SOURCE?: string;
   PUBLIC_FALLBACK_LLM_BASE_URL?: string;
   PUBLIC_FALLBACK_LLM_MODEL?: string;
@@ -376,13 +377,30 @@ app.post('/jobs', async (c) => {
           }
         }
       } else {
+        if (c.env.PUBLIC_FALLBACK_LLM_ENABLED !== 'true') {
+          return c.json({ error: 'Public fallback LLM is not configured. Please enter your own Ollama API key or sign in and configure Settings.' }, 503);
+        }
+
+        const source = c.env.PUBLIC_FALLBACK_LLM_SOURCE;
+        const baseUrl = c.env.PUBLIC_FALLBACK_LLM_BASE_URL;
+        const model = c.env.PUBLIC_FALLBACK_LLM_MODEL;
+        const fallbackKey = c.env.PUBLIC_FALLBACK_LLM_API_KEY;
+
+        if (!source || !baseUrl || !model) {
+          return c.json({ error: 'Public fallback LLM is not configured. Please enter your own Ollama API key or sign in and configure Settings.' }, 503);
+        }
+
+        if ((source === 'openaicompatible' || source === 'gemini') && !fallbackKey) {
+          return c.json({ error: 'Public fallback LLM is not configured. Please enter your own Ollama API key or sign in and configure Settings.' }, 503);
+        }
+
         llm_credential_mode = 'free_fallback';
-        llm_source = c.env.PUBLIC_FALLBACK_LLM_SOURCE || 'openaicompatible';
-        llm_base_url = c.env.PUBLIC_FALLBACK_LLM_BASE_URL || '';
-        llm_model = c.env.PUBLIC_FALLBACK_LLM_MODEL || '';
-        if (c.env.PUBLIC_FALLBACK_LLM_API_KEY && c.env.USER_SETTINGS_SECRET) {
+        llm_source = source;
+        llm_base_url = baseUrl;
+        llm_model = model;
+        if (fallbackKey && c.env.USER_SETTINGS_SECRET) {
           try {
-            const enc = await encryptApiKey(c.env.PUBLIC_FALLBACK_LLM_API_KEY, c.env.USER_SETTINGS_SECRET, `job_llm_snapshot:${id}`);
+            const enc = await encryptApiKey(fallbackKey, c.env.USER_SETTINGS_SECRET, `job_llm_snapshot:${id}`);
             encrypted_api_key_snapshot = enc.ciphertext;
             api_key_snapshot_iv = enc.iv;
             api_key_key_version = enc.keyVersion;

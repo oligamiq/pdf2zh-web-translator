@@ -61,7 +61,11 @@ export default function UploadForm() {
       }
       window.location.reload();
     } catch (err: any) {
-      setError(err.message);
+      if (err.message && err.message.includes('Public fallback LLM is not configured')) {
+        setError("APIキーなしのお試し変換は現在利用できません。\nOllama APIキーを入力して再試行するか、Googleログイン後にSettingsでAPIキーを保存してください。");
+      } else {
+        setError(err.message);
+      }
       // Reset turnstile
       if (isGuest()) {
         // @ts-ignore
@@ -77,7 +81,7 @@ export default function UploadForm() {
   return (
     <div class="panel" style="text-align: left; padding: 32px; position: relative; margin-bottom: 24px;">
       <h3 style="margin-top: 0;">Upload PDF</h3>
-      {error() && <div style="color: var(--danger); margin-bottom: 16px;">{error()}</div>}
+      {error() && <div style="color: var(--danger); margin-bottom: 16px; white-space: pre-wrap;">{error()}</div>}
       
       <Show when={isGuest()}>
         <div style="background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--accent); padding: 12px; margin-bottom: 20px; font-size: 14px;">

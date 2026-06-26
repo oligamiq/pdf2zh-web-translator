@@ -127,4 +127,40 @@ test.describe('Public Upload UI', () => {
     await expect(page.locator('text=Settings are available after signing in.')).toBeVisible();
     await expect(page.locator('text=For guest mode, enter an API key on the upload form for one-time use.')).toBeVisible();
   });
+
+  test('should show error when public fallback is disabled and no API key is provided', async ({ page }) => {
+    // Mock POST /jobs for public upload to return 503
+    await page.route('**/jobs', async (route) => {
+      if (route.request().method() === 'POST') {
+        return route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: 'Public fallback LLM is not configured. Please enter your own Ollama API key or sign in and configure Settings.'
+          }),
+        });
+      }
+      route.fallback();
+    });
+
+    await page.goto('/');
+
+    // Handle dialog for empty API key - accept it to proceed to upload
+    page.on('dialog', async dialog => {
+      await dialog.accept(); 
+    });
+
+    // Wait for Turnstile token to be ready
+    await expect(page.getByTestId('turnstile-ready')).toBeAttached();
+
+    // Set file directly to trigger upload
+    await page.getByTestId('pdf-file-input').setInputFiles({
+      name: 'test.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n% dummy pdf\n%%EOF\n')
+    });
+
+    // Verify error message on UI
+    await expect(page.locator('text=APIキーなしのお試し変換は現在利用できません。')).toBeVisible();
+  });
 });

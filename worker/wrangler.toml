@@ -18,3 +18,7 @@ FIREBASE_PROJECT_ID = "pdf2zh-tr"
 # Secrets (PROXY_SECRET, AGENT_TOKEN, etc.) should be set via:
 # wrangler secret put PROXY_SECRET
 # Or locally via .dev.vars
+PUBLIC_FALLBACK_LLM_ENABLED = "false"
+# PUBLIC_FALLBACK_LLM_SOURCE = "openaicompatible"
+# PUBLIC_FALLBACK_LLM_BASE_URL = "https://..."
+# PUBLIC_FALLBACK_LLM_MODEL = "..."

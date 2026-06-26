@@ -41,9 +41,10 @@
 * [ ] `PUBLIC_FALLBACK_LLM_API_KEY`: (Public mode用フォールバックOllama等のAPIキー)
 
 **`wrangler.toml` (vars)**:
-* [ ] `PUBLIC_FALLBACK_LLM_SOURCE`: `"openaicompatible"`
-* [ ] `PUBLIC_FALLBACK_LLM_BASE_URL`: `https://your-public-llm-url`
-* [ ] `PUBLIC_FALLBACK_LLM_MODEL`: `your-public-llm-model`
+* [ ] `PUBLIC_FALLBACK_LLM_ENABLED`: `"true"` または `"false"` (APIキーなし public fallbackを有効にする場合は `"true"`)
+* [ ] `PUBLIC_FALLBACK_LLM_SOURCE`: `"openaicompatible"` (ENABLED="true"のとき必須)
+* [ ] `PUBLIC_FALLBACK_LLM_BASE_URL`: `https://your-public-llm-url` (ENABLED="true"のとき必須)
+* [ ] `PUBLIC_FALLBACK_LLM_MODEL`: `your-public-llm-model` (ENABLED="true"のとき必須)
 
 ## Cloudflare Pages (Frontend)
 
