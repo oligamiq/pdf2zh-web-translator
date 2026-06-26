@@ -29,7 +29,7 @@
 * [ ] `AUTH_MODE`: `"firebase"`
 * [ ] `database_id` (D1): `wrangler d1 create` 時の UUID
 * [ ] Cloudflare Tunnel が作成済みであること（Zero Trust Published appなし、Public hostnameなし）
-* [ ] Workers VPC Service `pdf2zh-pc-api` が作成済みであること（`npx wrangler vpc service create ...`）
+* [ ] Workers VPC Service `pdf2zh-pc-api` が作成済みであること（`npx wrangler vpc service create --hostname pc-api --http-port 8080 ...`）
 * [ ] Workers VPC service binding `PC_API_VPC` に `service_id` が設定されていること
 
 **`wrangler secret put` (秘密値)**:
@@ -56,7 +56,7 @@
 * [ ] `PDF2ZH_DEFAULT_BASE_URL`: `https://ollama.com/v1` 等
 * [ ] `PDF2ZH_DEFAULT_MODEL`: `gemma4:31b-cloud` 等
 * [ ] `PDF2ZH_DEFAULT_API_KEY`: (Ollama等のAPIキー)
-* [ ] `CLOUDFLARED_TUNNEL_TOKEN`: `cloudflared tunnel token <tunnel-name>` で取得したトークン
+* [ ] `CLOUDFLARE_TUNNEL_TOKEN`: `cloudflared tunnel token <tunnel-name>` で取得したトークン（gitにはコミットしない）
 
 ## 最終チェック (Production Preflight)
 

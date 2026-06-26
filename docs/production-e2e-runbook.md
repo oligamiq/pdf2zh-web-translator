@@ -54,16 +54,16 @@ Cloudflare Dashboard (Workers VPC) からTunnelを作成し、PC APIを本番向
 
 1. Cloudflare Dashboard -> Networks -> Tunnels (または Workers VPC) から Tunnel を新規作成します。
    *(注意: Zero Trust の Published application や Public hostname は作成しません)*
-2. 表示されたコマンドを用いて Host PC に `cloudflared` をインストール・実行します。
+2. 表示されたインストールコマンドから トークン のみを抽出し、Host PCの `.env` に設定します。（`CLOUDFLARE_TUNNEL_TOKEN="<token>"`）
 3. トンネル作成後、`TUNNEL_ID` (UUID) をメモします。
-4. Host PC にて `docker compose up -d --build` で `pc-api` を起動し、`127.0.0.1:8789` で待ち受けている状態にします。
+4. Host PC にて `docker compose up -d --build pc-api cloudflared` を実行します。
 5. Worker 用の VPC Service を作成します:
 ```bash
 npx wrangler vpc service create pdf2zh-pc-api \
   --type http \
   --tunnel-id "<TUNNEL_ID>" \
-  --hostname localhost \
-  --http-port 8789
+  --hostname pc-api \
+  --http-port 8080
 ```
 6. コマンド結果から得られた `SERVICE_ID` を、`v2/worker/wrangler.toml` の `[[vpc_services]]` に設定し、再度 Worker をデプロイします。
 7. デプロイ後、`./scripts/prod-vpc-smoke.sh` を実行して VPC 経由での pc-api 疎通確認を行います。
@@ -78,7 +78,7 @@ AGENT_TOKEN=(手順7でセットした値)
 PDF2ZH_DEFAULT_BASE_URL=https://ollama.com/v1
 PDF2ZH_DEFAULT_MODEL=gemma4:31b-cloud
 PDF2ZH_DEFAULT_API_KEY=(Ollama互換等のAPIキー)
-CLOUDFLARED_TUNNEL_TOKEN=(手順9のトンネルトークン)
+CLOUDFLARE_TUNNEL_TOKEN=(手順9のトンネルトークン)
 ```
 
 ## 11. HDDディレクトリ作成

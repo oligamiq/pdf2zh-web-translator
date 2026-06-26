@@ -105,11 +105,21 @@ echo "✅ D1 schema file exists."
 
 # 5. cloudflared 設定確認
 echo "--- Checking cloudflared ---"
-if ! command -v cloudflared &> /dev/null; then
-  echo "⚠️ Warning: cloudflared command not found on host. Ensure it runs via container or another method."
-else
-  echo "✅ cloudflared command is available."
-fi
+check_env "CLOUDFLARE_TUNNEL_TOKEN"
+(
+  cd "$V2_DIR"
+  if ! docker compose config --services | grep -q "^cloudflared$"; then
+    echo "❌ cloudflared service not found in docker-compose.yml"
+    exit 1
+  fi
+  echo "✅ cloudflared compose service exists."
+  
+  if ! docker compose config | grep -q "image: cloudflare/cloudflared"; then
+    echo "❌ cloudflared image (cloudflare/cloudflared) not found in docker compose config"
+    exit 1
+  fi
+  echo "✅ cloudflared image is configured."
+)
 
 # 6. Worker config & dry-run build
 echo "--- Checking Worker ---"

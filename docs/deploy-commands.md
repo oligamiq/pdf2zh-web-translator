@@ -78,19 +78,24 @@ docker compose down
 ## Cloudflare Tunnel / Workers VPC Service
 
 ```bash
-# 1. Cloudflare Dashboard から Workers VPC 用の Tunnel を作成し、Host PC にインストール
+# 1. Cloudflare Dashboard から Workers VPC 用の Tunnel を作成
 # (Dashboard -> Networks -> Tunnels)
 # 注意: Zero Trust の Published application や Public hostname は作成しない
+# インストールコマンドから token のみを抽出し、Host PCの .env に設定する
+# CLOUDFLARE_TUNNEL_TOKEN="<extracted_token_here>"
+# token は git にコミットしないこと
 
-# 2. Host PC 側で pc-api が 127.0.0.1:8789 で動いていることを確認 (docker-compose)
+# 2. Host PC 側で docker compose を起動
+cd /srv/pdf2zh-web/v2
+docker compose up -d --build pc-api cloudflared
 
 # 3. Worker 側で VPC Service を作成
 cd /srv/pdf2zh-web/v2/worker
 npx wrangler vpc service create pdf2zh-pc-api \
   --type http \
   --tunnel-id "<TUNNEL_ID>" \
-  --hostname localhost \
-  --http-port 8789
+  --hostname pc-api \
+  --http-port 8080
 
 # 4. wrangler config に vpc_services 追記
 # [[vpc_services]]
