@@ -49,9 +49,24 @@ npm run deploy
 ```
 > 期待出力: デプロイ先のWorker URL（`https://your-worker.workers.dev`）が表示されます。
 
-## 9. Workers VPC service / cloudflared connector設定
-* Cloudflare Zero Trust DashboardからTunnelを作成し、Tokenを取得します。
-* （VPC Service Bindingを使用する場合は `wrangler.toml` の `[[services]]` を設定して再デプロイします。）
+## 9. Workers VPC service / cloudflared tunnel設定
+Cloudflare Dashboard (Workers VPC) からTunnelを作成し、PC APIを本番向けに非公開接続します。
+
+1. Cloudflare Dashboard -> Networks -> Tunnels (または Workers VPC) から Tunnel を新規作成します。
+   *(注意: Zero Trust の Published application や Public hostname は作成しません)*
+2. 表示されたコマンドを用いて Host PC に `cloudflared` をインストール・実行します。
+3. トンネル作成後、`TUNNEL_ID` (UUID) をメモします。
+4. Host PC にて `docker compose up -d --build` で `pc-api` を起動し、`127.0.0.1:8789` で待ち受けている状態にします。
+5. Worker 用の VPC Service を作成します:
+```bash
+npx wrangler vpc service create pdf2zh-pc-api \
+  --type http \
+  --tunnel-id "<TUNNEL_ID>" \
+  --hostname localhost \
+  --http-port 8789
+```
+6. コマンド結果から得られた `SERVICE_ID` を、`v2/worker/wrangler.toml` の `[[vpc_services]]` に設定し、再度 Worker をデプロイします。
+7. デプロイ後、`./scripts/prod-vpc-smoke.sh` を実行して VPC 経由での pc-api 疎通確認を行います。
 
 ## 10. PC側 `.env` 作成
 `v2/.env` を作成または編集し、以下の実値をセットします。
@@ -126,8 +141,17 @@ Cloudflare Dashboardから Pages を新規作成し、GitHub連携またはDirec
 
 ## 17. 失敗時の切り分け
 * **ログインできない**: FirebaseのAuthorized domains設定、または `VITE_FIREBASE_*` 環境変数の誤り。
-* **アップロード失敗 (500)**: PC APIとのTunnel接続が確立されていないか、PROXY_SECRETが一致していません。
+* **アップロード失敗 (500/502)**: PC APIとの VPC Service 接続が確立されていないか、PROXY_SECRETが一致していません。`prod-vpc-smoke.sh` で経路確認を行ってください。
 * **ジョブがqueuedのまま**: PC側の `agentLoop` が落ちているか、`AGENT_TOKEN` が一致していません。`docker compose logs -f` を確認。
+
+## 18. ロールバック手順
+Worker側の障害時は、直前のデプロイバージョンへロールバックします。
+```bash
+cd v2/worker
+npx wrangler deployments list
+npx wrangler rollback <deployment-id>
+```
+Frontend側の障害時は、Cloudflare Pages のダッシュボードから過去のデプロイメントを選び、「Retry deployment」または「Rollback」を実行してください。
 
 ---
 ※ **ZIPダウンロードと期限について**:

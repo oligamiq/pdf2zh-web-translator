@@ -55,6 +55,12 @@ check_env "HDD_BASE"
 check_env "WORKER_API_BASE_URL"
 check_env "USER_SETTINGS_SECRET"
 
+if [ ${#USER_SETTINGS_SECRET} -ne 44 ] && [ ${#USER_SETTINGS_SECRET} -ne 43 ]; then
+  echo "❌ USER_SETTINGS_SECRET must be 32 bytes base64 encoded (length 43/44). Current length is: ${#USER_SETTINGS_SECRET}"
+  exit 1
+fi
+echo "✅ USER_SETTINGS_SECRET is base64 32 bytes."
+
 if [ "$PDF2ZH_TRANSLATOR_SERVICE" = "openaicompatible" ]; then
   check_env "PDF2ZH_OPENAI_COMPATIBLE_API_KEY"
 fi
@@ -115,6 +121,10 @@ if ! grep -q 'AUTH_MODE = "firebase"' "$WORKER_TOML"; then
   echo "❌ wrangler.toml must set AUTH_MODE = \"firebase\""
   exit 1
 fi
+if ! grep -q '\[\[d1_databases\]\]' "$WORKER_TOML"; then
+  echo "❌ wrangler.toml must contain a D1 binding ([[d1_databases]])"
+  exit 1
+fi
 (
   cd "$V2_DIR/worker"
   echo "Installing worker deps..."
@@ -141,8 +151,14 @@ if [ -d "$V2_DIR/frontend" ]; then
       npm run build
       exit 1
     fi
+    echo "Running frontend E2E tests..."
+    if ! npm run test:e2e > /dev/null 2>&1; then
+      echo "❌ Frontend E2E tests failed."
+      npm run test:e2e
+      exit 1
+    fi
   )
-  echo "✅ Frontend build passed."
+  echo "✅ Frontend build and test:e2e passed."
 else
   echo "❌ Missing frontend directory."
   exit 1

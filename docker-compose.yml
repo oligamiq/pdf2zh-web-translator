@@ -27,7 +27,8 @@ services:
       - internal-net
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # No ports exposed to host.
+    ports:
+      - "127.0.0.1:8789:8080"
     restart: unless-stopped
 
   cloudflared:

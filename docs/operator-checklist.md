@@ -28,7 +28,9 @@
 * [ ] `CORS_ORIGIN`: `https://your-frontend-app.pages.dev`
 * [ ] `AUTH_MODE`: `"firebase"`
 * [ ] `database_id` (D1): `wrangler d1 create` 時の UUID
-* [ ] Workers VPC service binding名 (Tunnel宛): `PDF2ZH_PRIVATE_API` (例)
+* [ ] Cloudflare Tunnel が作成済みであること（Zero Trust Published appなし、Public hostnameなし）
+* [ ] Workers VPC Service `pdf2zh-pc-api` が作成済みであること（`npx wrangler vpc service create ...`）
+* [ ] Workers VPC service binding `PC_API_VPC` に `service_id` が設定されていること
 
 **`wrangler secret put` (秘密値)**:
 * [ ] `PROXY_SECRET`: (48文字以上のランダム文字列)

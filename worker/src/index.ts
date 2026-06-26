@@ -13,6 +13,7 @@ export type Env = {
   CORS_ORIGIN: string;
   FIREBASE_PROJECT_ID: string;
   USER_SETTINGS_SECRET?: string;
+  PC_API_VPC?: Fetcher;
 }
 
 // --- Crypto Helpers for User LLM Settings ---
@@ -58,29 +59,26 @@ async function fetchPrivateApi(
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  const headers = new Headers(init.headers);
+  const base = env.PRIVATE_API_BASE_URL || 'http://localhost';
+  const targetUrl = new URL(path, base);
 
+  const headers = new Headers(init.headers);
   if (env.PROXY_SECRET) {
     headers.set("X-Proxy-Secret", env.PROXY_SECRET);
   }
 
-  // local/mock E2E用
-  if (env.PRIVATE_API_BASE_URL) {
-    const base = env.PRIVATE_API_BASE_URL.replace(/\/+$/, "");
-    const url = `${base}${path}`;
-    console.log("fetchPrivateApi: url", url);
-    return fetch(url, {
-      ...init,
-      headers,
-    });
+  const request = new Request(targetUrl.toString(), {
+    ...init,
+    headers,
+  });
+
+  if (env.PC_API_VPC) {
+    return env.PC_API_VPC.fetch(request);
   }
 
-  // production用 Workers VPC service binding
-  if (env.PDF2ZH_PRIVATE_API) {
-    return env.PDF2ZH_PRIVATE_API.fetch(`http://pc-api${path}`, {
-      ...init,
-      headers,
-    });
+  // local/mock E2E用
+  if (env.PRIVATE_API_BASE_URL) {
+    return fetch(request);
   }
 
   throw new Error("private API binding is not configured");
@@ -469,6 +467,19 @@ app.post('/agent/jobs/:id/failed', async (c) => {
 
 app.post('/agent/heartbeat', async (c) => {
   return c.json({ ok: true })
+})
+
+app.get('/admin/pc-api-health', async (c) => {
+  const token = c.req.header('Authorization');
+  if (!token || token !== `Bearer ${c.env.AGENT_TOKEN}`) {
+    return c.json({ error: 'Unauthorized admin' }, 401);
+  }
+  try {
+    const resp = await fetchPrivateApi(c.env, '/internal/healthz');
+    return c.json({ ok: true, pc_api_status: resp.status });
+  } catch (err: any) {
+    return c.json({ ok: false, error: err.message }, 502);
+  }
 })
 
 export default app
