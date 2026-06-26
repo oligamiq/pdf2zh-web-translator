@@ -1,0 +1,22 @@
+name = "pdf2zh-worker"
+main = "src/index.ts"
+compatibility_date = "2024-04-05"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pdf2zh-db"
+database_id = "your-d1-uuid-here"
+
+# Workers VPC / Service Binding
+# [[services]]
+# binding = "PDF2ZH_PRIVATE_API"
+# service = "pdf2zh-tunnel"
+
+[vars]
+CORS_ORIGIN = "*"
+AUTH_MODE = "mock" # Set to "firebase" in production
+FIREBASE_PROJECT_ID = ""
+
+# Make sure to set these secrets via wrangler secret put:
+# PROXY_SECRET
+# AGENT_TOKEN

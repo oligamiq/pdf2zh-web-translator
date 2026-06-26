@@ -11,3 +11,24 @@ worker/.dev.vars.bak
 *.log
 download.zip
 
+
+# local env / secrets
+.env
+.env.*
+!.env.example
+!frontend/.env.example
+
+# local/generated
+.tmp/
+*.log
+download.zip
+
+# frontend generated
+frontend/dist/
+frontend/node_modules/
+frontend/playwright-report/
+frontend/test-results/
+
+# worker generated
+worker/node_modules/
+worker/.wrangler/
