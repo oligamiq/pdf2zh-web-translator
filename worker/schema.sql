@@ -9,8 +9,26 @@ CREATE TABLE IF NOT EXISTS jobs (
     started_at DATETIME,
     finished_at DATETIME,
     error_message TEXT,
-    download_expires_at DATETIME
+    download_expires_at DATETIME,
+    llm_source TEXT,
+    llm_base_url TEXT,
+    llm_model TEXT,
+    encrypted_api_key_snapshot TEXT,
+    api_key_snapshot_iv TEXT,
+    api_key_key_version TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs(user_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+
+CREATE TABLE IF NOT EXISTS user_llm_settings (
+    user_id TEXT PRIMARY KEY,
+    llm_source TEXT NOT NULL DEFAULT 'openaicompatible',
+    llm_base_url TEXT NOT NULL,
+    llm_model TEXT NOT NULL,
+    encrypted_api_key TEXT,
+    api_key_iv TEXT,
+    api_key_key_version TEXT NOT NULL DEFAULT 'v1',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

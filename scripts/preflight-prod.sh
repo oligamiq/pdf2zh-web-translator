@@ -53,6 +53,7 @@ check_env "AGENT_TOKEN"
 check_env "PROXY_SECRET"
 check_env "HDD_BASE"
 check_env "WORKER_API_BASE_URL"
+check_env "USER_SETTINGS_SECRET"
 
 if [ "$PDF2ZH_TRANSLATOR_SERVICE" = "openaicompatible" ]; then
   check_env "PDF2ZH_OPENAI_COMPATIBLE_API_KEY"

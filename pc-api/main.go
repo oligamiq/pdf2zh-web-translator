@@ -251,7 +251,14 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func runJob(jobID string) error {
+type LLMSettings struct {
+	Source  string `json:"source"`
+	BaseURL string `json:"base_url"`
+	Model   string `json:"model"`
+	APIKey  string `json:"api_key"`
+}
+
+func runJob(jobID string, llmSettings *LLMSettings) error {
 	jobsMu.Lock()
 	if runningJobs[jobID] {
 		jobsMu.Unlock()
@@ -285,26 +292,45 @@ func runJob(jobID string) error {
 	logArgs := []string{inputPath, "--output", outputDir, "--lang-out", "ja", "--watermark-output-mode", "no_watermark"}
 
 	service := os.Getenv("PDF2ZH_TRANSLATOR_SERVICE")
+	if llmSettings != nil && llmSettings.Source != "" {
+		service = llmSettings.Source
+	}
 	if service == "" {
 		service = "openaicompatible"
 	}
+
+	cmdEnv := os.Environ()
 
 	switch service {
 	case "openaicompatible":
 		args = append(args, "--openaicompatible")
 		logArgs = append(logArgs, "--openaicompatible")
 
-		if model := os.Getenv("PDF2ZH_OPENAI_COMPATIBLE_MODEL"); model != "" {
-			args = append(args, "--openai-compatible-model", model)
-			logArgs = append(logArgs, "--openai-compatible-model", model)
+		model := os.Getenv("PDF2ZH_OPENAI_COMPATIBLE_MODEL")
+		if llmSettings != nil && llmSettings.Model != "" {
+			model = llmSettings.Model
 		}
-		if baseURL := os.Getenv("PDF2ZH_OPENAI_COMPATIBLE_BASE_URL"); baseURL != "" {
-			args = append(args, "--openai-compatible-base-url", baseURL)
-			logArgs = append(logArgs, "--openai-compatible-base-url", baseURL)
+		if model != "" {
+			cmdEnv = append(cmdEnv, "OPENAI_COMPATIBLE_MODEL="+model)
+			log.Printf("OPENAI_COMPATIBLE_MODEL=%s", model)
 		}
-		if apiKey := os.Getenv("PDF2ZH_OPENAI_COMPATIBLE_API_KEY"); apiKey != "" {
-			args = append(args, "--openai-compatible-api-key", apiKey)
-			logArgs = append(logArgs, "--openai-compatible-api-key", "(hidden)")
+		
+		baseURL := os.Getenv("PDF2ZH_OPENAI_COMPATIBLE_BASE_URL")
+		if llmSettings != nil && llmSettings.BaseURL != "" {
+			baseURL = llmSettings.BaseURL
+		}
+		if baseURL != "" {
+			cmdEnv = append(cmdEnv, "OPENAI_COMPATIBLE_BASE_URL="+baseURL)
+			log.Printf("OPENAI_COMPATIBLE_BASE_URL=%s", baseURL)
+		}
+		
+		apiKey := os.Getenv("PDF2ZH_OPENAI_COMPATIBLE_API_KEY")
+		if llmSettings != nil && llmSettings.APIKey != "" {
+			apiKey = llmSettings.APIKey
+		}
+		if apiKey != "" {
+			cmdEnv = append(cmdEnv, "OPENAI_COMPATIBLE_API_KEY="+apiKey)
+			log.Printf("OPENAI_COMPATIBLE_API_KEY=(hidden)")
 		}
 	case "openai":
 		args = append(args, "--openai")
@@ -320,6 +346,7 @@ func runJob(jobID string) error {
 	}
 
 	cmd := exec.Command("pdf2zh_next", args...)
+	cmd.Env = cmdEnv
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 
@@ -367,7 +394,7 @@ func handleRun(w http.ResponseWriter, r *http.Request) {
 	jobID := parts[3]
 
 	// Async run for manual/webhook triggers
-	go runJob(jobID)
+	go runJob(jobID, nil)
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -411,7 +438,10 @@ func agentLoop() {
 		}
 		
 		var claimResp struct {
-			Job *struct { ID string `json:"id"` } `json:"job"`
+			Job *struct { 
+				ID string `json:"id"` 
+				LLMSettings *LLMSettings `json:"llm_settings"`
+			} `json:"job"`
 		}
 		err = json.NewDecoder(resp.Body).Decode(&claimResp)
 		resp.Body.Close()
@@ -423,7 +453,7 @@ func agentLoop() {
 		jobID := claimResp.Job.ID
 		log.Println("Claimed job:", jobID)
 
-		err = runJob(jobID)
+		err = runJob(jobID, claimResp.Job.LLMSettings)
 
 		reportURL := workerAPI + "/agent/jobs/" + jobID + "/succeeded"
 		body := ""

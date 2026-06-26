@@ -37,6 +37,7 @@ npx wrangler d1 execute pdf2zh-db --remote --file=./schema.sql
 ```bash
 openssl rand -base64 48 | npx wrangler secret put PROXY_SECRET
 openssl rand -base64 48 | npx wrangler secret put AGENT_TOKEN
+openssl rand -base64 32 | npx wrangler secret put USER_SETTINGS_SECRET
 ```
 > 期待出力: `Successfully created secret for key PROXY_SECRET/AGENT_TOKEN`
 

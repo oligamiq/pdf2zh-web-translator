@@ -31,8 +31,9 @@
 * [ ] Workers VPC service binding名 (Tunnel宛): `PDF2ZH_PRIVATE_API` (例)
 
 **`wrangler secret put` (秘密値)**:
-* [ ] `PROXY_SECRET`: (生成したランダム文字列)
-* [ ] `AGENT_TOKEN`: (生成したランダム文字列)
+* [ ] `PROXY_SECRET`: (48文字以上のランダム文字列)
+* [ ] `AGENT_TOKEN`: (48文字以上のランダム文字列)
+* [ ] `USER_SETTINGS_SECRET`: (32バイト以上のランダム文字列をbase64エンコードしたもの)
 
 ## Cloudflare Pages (Frontend)
 
