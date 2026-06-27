@@ -27,7 +27,13 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-export const loginWithGoogle = () => {
+export const loginWithGoogle = async () => {
+  if (import.meta.env.MODE === 'e2e' && import.meta.env.VITE_E2E_AUTH_BYPASS === 'true') {
+    sessionStorage.setItem('e2e_token', 'mock-token');
+    sessionStorage.setItem('e2e_user_email', 'e2e-user@example.com');
+    window.location.reload();
+    return;
+  }
   const provider = new GoogleAuthProvider();
   return signInWithPopup(auth, provider);
 };
