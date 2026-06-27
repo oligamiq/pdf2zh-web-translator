@@ -148,8 +148,8 @@ app.use('*', async (c, next) => {
   const origin = c.env.CORS_ORIGIN || '*'
   return cors({
     origin: origin,
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Proxy-Secret'],
-    allowMethods: ['POST', 'GET', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Proxy-Secret', 'X-Turnstile-Token'],
+    allowMethods: ['POST', 'GET', 'PUT', 'DELETE', 'OPTIONS'],
     exposeHeaders: ['Content-Length'],
     maxAge: 600,
   })(c, next)
@@ -224,7 +224,7 @@ app.use('/settings/*', authMiddleware)
 
 app.get('/settings/llm', async (c) => {
   const uid = c.get('uid') as string;
-  const settings = await c.env.DB.prepare(`SELECT * FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
+  const settings = await c.env.DB.prepare(`SELECT user_id, llm_source, llm_base_url, llm_model, encrypted_api_key, api_key_iv FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
   if (!settings) {
     return c.json({ llm_source: 'openaicompatible', llm_base_url: '', llm_model: '', has_api_key: false });
   }
@@ -258,7 +258,7 @@ app.put('/settings/llm', async (c) => {
   if (llm_model && llm_model.length > 255) return c.json({ error: 'model_too_long' }, 400);
   if (api_key && api_key.length > 2048) return c.json({ error: 'api_key_too_long' }, 400);
   
-  const existing = await c.env.DB.prepare(`SELECT * FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
+  const existing = await c.env.DB.prepare(`SELECT user_id, llm_source, llm_base_url, llm_model, encrypted_api_key, api_key_iv FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
   if (api_key === "") {
     return c.json({ error: 'invalid_api_key', message: 'Use clear_api_key to remove' }, 400);
   }
@@ -372,7 +372,7 @@ app.post('/jobs', async (c) => {
 
     let settings = null;
     if (ownerType === 'firebase') {
-      settings = await c.env.DB.prepare(`SELECT * FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
+      settings = await c.env.DB.prepare(`SELECT user_id, llm_source, llm_base_url, llm_model, encrypted_api_key, api_key_iv FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
     }
 
     if (apiKey) {
@@ -521,7 +521,7 @@ app.post('/jobs', async (c) => {
 app.get('/jobs', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const { results } = await c.env.DB.prepare(
-    `SELECT * FROM jobs WHERE user_id = ? ORDER BY created_at DESC`
+    `SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE user_id = ? ORDER BY created_at DESC`
   ).bind(uid).all()
   return c.json(results)
 })
@@ -529,7 +529,7 @@ app.get('/jobs', authMiddleware, async (c) => {
 app.get('/jobs/:id', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const id = c.req.param('id')
-  const job = await c.env.DB.prepare(`SELECT * FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
   return c.json(job)
 })
@@ -537,7 +537,7 @@ app.get('/jobs/:id', authMiddleware, async (c) => {
 app.get('/jobs/:id/log', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const id = c.req.param('id')
-  const job = await c.env.DB.prepare(`SELECT * FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
 
   const offset = c.req.query('offset') || '0'
@@ -554,7 +554,7 @@ app.get('/jobs/:id/log', authMiddleware, async (c) => {
 app.get('/jobs/:id/download', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const id = c.req.param('id')
-  const job = await c.env.DB.prepare(`SELECT * FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
   if (job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
 
@@ -582,7 +582,7 @@ app.get('/public/jobs/:id', async (c) => {
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
   
   const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
-  const job = await c.env.DB.prepare(`SELECT * FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   return c.json(job)
 })
@@ -593,7 +593,7 @@ app.get('/public/jobs/:id/log', async (c) => {
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
 
   const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
-  const job = await c.env.DB.prepare(`SELECT * FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
 
   const offset = c.req.query('offset') || '0'
@@ -613,7 +613,7 @@ app.get('/public/jobs/:id/download', async (c) => {
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
 
   const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
-  const job = await c.env.DB.prepare(`SELECT * FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   if (job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
 
@@ -650,7 +650,7 @@ app.post('/agent/claim', async (c) => {
   const workerId = body.worker_id || 'default-worker'
   
   // Find a queued job
-  const job = await c.env.DB.prepare(`SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1`).first()
+  const job = await c.env.DB.prepare(`SELECT id, original_filename, llm_source, llm_base_url, llm_model, encrypted_api_key_snapshot, api_key_snapshot_iv, owner_type, public_client_hash, public_ip_hash, public_expires_at, file_size_bytes, turnstile_verified, llm_credential_mode FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1`).first()
   if (!job) return c.json({ job: null })
 
   let decryptedApiKey = null;
