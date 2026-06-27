@@ -1,4 +1,5 @@
 import { auth } from './firebase';
+import { setCurrentUser } from './authState';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -24,6 +25,17 @@ export function isAuthenticated(): boolean {
 }
 
 export async function logout() {
+  const isE2EAuthBypassEnabled =
+    import.meta.env.MODE === 'e2e' &&
+    import.meta.env.VITE_E2E_AUTH_BYPASS === 'true';
+
+  if (isE2EAuthBypassEnabled) {
+    sessionStorage.removeItem('e2e_token');
+    sessionStorage.removeItem('e2e_user_email');
+    setCurrentUser(null);
+    return;
+  }
+
   await auth.signOut();
 }
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {

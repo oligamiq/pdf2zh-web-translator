@@ -177,4 +177,30 @@ test.describe('Public Upload UI', () => {
     await expect(page).toHaveURL(/.*\/$/);
     await expect(page.locator('span', { hasText: 'Guest mode' })).toBeVisible();
   });
+
+  test('should reactively update UI on login and logout without reload', async ({ page }) => {
+    // 1. Guest状態でDashboardを開く
+    await page.goto('/');
+
+    // 2. Guest mode と Sign in with Google が表示される
+    await expect(page.locator('span', { hasText: 'Guest mode' })).toBeVisible();
+    await expect(page.locator('button', { hasText: 'Sign in with Google' })).toBeVisible();
+
+    // 3. E2E mock loginを実行
+    await page.locator('button', { hasText: 'Sign in with Google' }).click();
+
+    // 4. 同じページで e2e-user@example.com と Settings が表示される
+    await expect(page.locator('span', { hasText: 'e2e-user@example.com' })).toBeVisible();
+    await expect(page.locator('a', { hasText: 'Settings' })).toBeVisible();
+
+    // 5. Sign out をクリック
+    await page.locator('button', { hasText: 'Sign out' }).click();
+
+    // 6. 同じページで Guest mode と Sign in with Google に戻る
+    await expect(page.locator('span', { hasText: 'Guest mode' })).toBeVisible();
+    await expect(page.locator('button', { hasText: 'Sign in with Google' })).toBeVisible();
+
+    // 7. /login へ遷移していないことを確認
+    expect(page.url().endsWith('/')).toBeTruthy();
+  });
 });
