@@ -1,0 +1,4 @@
+ALTER TABLE jobs ADD COLUMN progress_percent INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN progress_phase TEXT;
+ALTER TABLE jobs ADD COLUMN progress_message TEXT;
+ALTER TABLE jobs ADD COLUMN log_tail TEXT;

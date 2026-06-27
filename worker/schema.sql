@@ -23,7 +23,11 @@ CREATE TABLE IF NOT EXISTS jobs (
     public_expires_at DATETIME,
     file_size_bytes INTEGER,
     turnstile_verified INTEGER NOT NULL DEFAULT 0,
-    llm_credential_mode TEXT
+    llm_credential_mode TEXT,
+    progress_percent INTEGER NOT NULL DEFAULT 0,
+    progress_phase TEXT,
+    progress_message TEXT,
+    log_tail TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs(user_id);

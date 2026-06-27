@@ -521,7 +521,7 @@ app.post('/jobs', async (c) => {
 app.get('/jobs', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const { results } = await c.env.DB.prepare(
-    `SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE user_id = ? ORDER BY created_at DESC`
+    `SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail FROM jobs WHERE user_id = ? ORDER BY created_at DESC`
   ).bind(uid).all()
   return c.json(results)
 })
@@ -529,7 +529,7 @@ app.get('/jobs', authMiddleware, async (c) => {
 app.get('/jobs/:id', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const id = c.req.param('id')
-  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
   return c.json(job)
 })
@@ -537,7 +537,7 @@ app.get('/jobs/:id', authMiddleware, async (c) => {
 app.get('/jobs/:id/log', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const id = c.req.param('id')
-  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
 
   const offset = c.req.query('offset') || '0'
@@ -554,7 +554,7 @@ app.get('/jobs/:id/log', authMiddleware, async (c) => {
 app.get('/jobs/:id/download', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const id = c.req.param('id')
-  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
   if (job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
 
@@ -582,7 +582,7 @@ app.get('/public/jobs/:id', async (c) => {
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
   
   const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
-  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   return c.json(job)
 })
@@ -593,7 +593,7 @@ app.get('/public/jobs/:id/log', async (c) => {
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
 
   const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
-  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
 
   const offset = c.req.query('offset') || '0'
@@ -613,7 +613,7 @@ app.get('/public/jobs/:id/download', async (c) => {
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
 
   const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
-  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   if (job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
 
@@ -688,6 +688,30 @@ app.post('/agent/claim', async (c) => {
     })
   }
   return c.json({ job: null })
+})
+
+app.post('/agent/jobs/:id/progress', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json()
+  const now = new Date().toISOString()
+  
+  const status = body.status || 'running';
+  const percent = body.progress_percent || 0;
+  const phase = body.progress_phase || '';
+  const message = body.progress_message || '';
+  const errorMsg = body.error_message || null;
+  const logTail = body.log_tail || null;
+
+  if (status === 'failed') {
+    await c.env.DB.prepare(
+      `UPDATE jobs SET status = 'failed', finished_at = ?, progress_percent = ?, progress_phase = ?, error_message = ?, log_tail = ? WHERE id = ? AND status = 'running'`
+    ).bind(now, percent, phase, errorMsg, logTail, id).run()
+  } else {
+    await c.env.DB.prepare(
+      `UPDATE jobs SET status = 'running', progress_percent = ?, progress_phase = ?, progress_message = ?, log_tail = ? WHERE id = ? AND status = 'running'`
+    ).bind(percent, phase, message, logTail, id).run()
+  }
+  return c.json({ ok: true })
 })
 
 app.post('/agent/jobs/:id/succeeded', async (c) => {
