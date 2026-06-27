@@ -107,27 +107,52 @@ fi
 echo "✅ D1 schema file exists."
 
 echo "Checking remote tables..."
-(
+d1_table_exists() {
+  local table="$1"
+  local output
+  output="$(
+    cd "$V2_DIR/worker"
+    npx wrangler d1 execute pdf2zh-db --remote --command \
+      "SELECT CASE WHEN EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='${table}') THEN 'FOUND' ELSE 'MISSING' END AS result;"
+  )"
+  echo "$output" | grep -q "FOUND"
+}
+
+
+echo "Checking 'jobs' table..."
+if ! d1_table_exists "jobs"; then
+  echo "❌ Table 'jobs' does not exist in remote DB. Did you apply migrations?"
+  exit 1
+fi
+echo "✅ jobs table exists."
+
+echo "Checking 'user_llm_settings' table..."
+if ! d1_table_exists "user_llm_settings"; then
+  echo "❌ Table 'user_llm_settings' does not exist in remote DB. Did you apply migrations?"
+  exit 1
+fi
+echo "✅ user_llm_settings table exists."
+
+echo "Checking 'public_rate_limits' table..."
+if ! d1_table_exists "public_rate_limits"; then
+  echo "❌ Table 'public_rate_limits' does not exist in remote DB. Did you apply migrations (0003_add_public_jobs)?"
+  exit 1
+fi
+echo "✅ public_rate_limits table exists."
+
+echo "Checking 'jobs' table columns..."
+JOB_COLUMNS=$(
   cd "$V2_DIR/worker"
-  
-  echo "Checking 'jobs' table..."
-  if ! npx wrangler d1 execute pdf2zh-db --remote --command "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='jobs';" | grep -q '│ 1'; then
-     echo "❌ Table 'jobs' does not exist in remote DB. Did you apply migrations?"
-     exit 1
-  fi
-  
-  echo "Checking 'user_llm_settings' table..."
-  if ! npx wrangler d1 execute pdf2zh-db --remote --command "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='user_llm_settings';" | grep -q '│ 1'; then
-     echo "❌ Table 'user_llm_settings' does not exist in remote DB. Did you apply migrations?"
-     exit 1
-  fi
-  
-  echo "Checking 'public_rate_limits' table..."
-  if ! npx wrangler d1 execute pdf2zh-db --remote --command "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='public_rate_limits';" | grep -q '│ 1'; then
-     echo "❌ Table 'public_rate_limits' does not exist in remote DB. Did you apply migrations (0003_add_public_jobs)?"
-     exit 1
-  fi
+  npx wrangler d1 execute pdf2zh-db --remote --command "PRAGMA table_info(jobs);"
 )
+
+for col in owner_type public_receipt_hash public_client_hash public_ip_hash public_expires_at file_size_bytes turnstile_verified llm_credential_mode; do
+  if ! echo "$JOB_COLUMNS" | grep -q "$col"; then
+    echo "❌ Column '$col' does not exist in 'jobs' table. Did you apply migrations?"
+    exit 1
+  fi
+done
+echo "✅ 'jobs' table has required public columns."
 echo "✅ Remote tables exist."
 
 # 5. cloudflared 設定確認
