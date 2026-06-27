@@ -4,7 +4,7 @@ import { A } from '@solidjs/router';
 import JobList from '../components/JobList';
 import UploadForm from '../components/UploadForm';
 import { loginWithGoogle } from '../firebase';
-import { currentUser } from '../authState';
+import { currentUser, authReady } from '../authState';
 
 export default function Dashboard() {
   const [health, setHealth] = createSignal<string>('Checking...');
@@ -73,13 +73,13 @@ export default function Dashboard() {
           <Show
             when={currentUser()}
             fallback={
-              <>
+              <Show when={authReady()} fallback={<span style="margin-right: 16px; color: var(--text-muted);">Loading Auth...</span>}>
                 <span style="margin-right: 16px; color: var(--accent); font-weight: bold;">Guest mode</span>
                 <button class="btn" onClick={handleLogin} disabled={signingIn()}>
                   {signingIn() ? 'Signing in...' : 'Sign in with Google'}
                 </button>
                 {loginError() && <div style="color: var(--danger); margin-top: 8px; font-size: 14px;">{loginError()}</div>}
-              </>
+              </Show>
             }
           >
             {(u) => (

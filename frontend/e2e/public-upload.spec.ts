@@ -203,4 +203,86 @@ test.describe('Public Upload UI', () => {
     // 7. /login へ遷移していないことを確認
     expect(page.url().endsWith('/')).toBeTruthy();
   });
+
+  test('should display API key input even when logged in', async ({ page }) => {
+    // 1. E2E logged-in状態でDashboard表示
+    await page.goto('/');
+    await page.locator('button', { hasText: 'Sign in with Google' }).click();
+
+    // 2. UploadFormにOllama API Key入力欄が表示される
+    await expect(page.locator('input[placeholder="sk-..."]')).toBeVisible();
+
+    // 3. Settingsリンクも表示される
+    await expect(page.locator('a', { hasText: 'Settings' })).toBeVisible();
+
+    // Save checkbox should be visible for logged in user
+    await expect(page.locator('text=Save this API key to my account settings')).toBeVisible();
+  });
+
+  test('should prompt to save API key if entered in guest mode before login and no existing key', async ({ page }) => {
+    // Mock /settings/llm to return has_api_key = false initially, then success on PUT
+    await page.route('**/settings/llm', async route => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ llm_source: 'openaicompatible', llm_base_url: '', llm_model: '', has_api_key: false })
+        });
+      } else if (route.request().method() === 'PUT') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true })
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await page.goto('/');
+
+    // 1. Guest modeでAPI key欄に dummy key を入力
+    await page.locator('input[placeholder="sk-..."]').fill('dummy-api-key');
+
+    // 2. E2E mock login
+    await page.locator('button', { hasText: 'Sign in with Google' }).click();
+
+    // 3. API key入力値が消えない
+    await expect(page.locator('input[placeholder="sk-..."]')).toHaveValue('dummy-api-key');
+
+    // 5. 「保存しますか？」promptが表示される
+    await expect(page.locator('text=入力済みのOllama APIキーをアカウント設定に保存しますか？')).toBeVisible();
+
+    // 6. Save to Settingsを押す (保存する)
+    await page.locator('button', { hasText: '保存する' }).click();
+
+    // 8. prompt is gone and API key本体はUIに再表示/ログ出力されない
+    await expect(page.locator('text=入力済みのOllama APIキーをアカウント設定に保存しますか？')).toBeHidden();
+  });
+
+  test('should not prompt to save API key if user already has an existing key', async ({ page }) => {
+    // Mock /settings/llm to return has_api_key = true
+    await page.route('**/settings/llm', async route => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ llm_source: 'openaicompatible', llm_base_url: '', llm_model: '', has_api_key: true })
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await page.goto('/');
+
+    // 1. Guest modeでAPI keyを入力
+    await page.locator('input[placeholder="sk-..."]').fill('dummy-api-key');
+
+    // 2. login
+    await page.locator('button', { hasText: 'Sign in with Google' }).click();
+
+    // 4. 保存提案は出ない
+    await expect(page.locator('text=入力済みのOllama APIキーをアカウント設定に保存しますか？')).toBeHidden();
+  });
 });

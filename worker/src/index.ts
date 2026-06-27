@@ -337,7 +337,13 @@ app.post('/jobs', async (c) => {
     let api_key_key_version = null;
     let llm_credential_mode = 'none';
 
+    const apiKey = formData.get('api_key') as string;
+    const saveApiKey = formData.get('save_api_key_to_settings') === 'true';
+
     if (ownerType === 'public') {
+      if (saveApiKey) {
+        return c.json({ error: 'Sign in to save API key to settings.' }, 400);
+      }
       if (file.size > 5 * 1024 * 1024) return c.json({ error: 'payload_too_large', message: 'Public mode is limited to 5MiB' }, 413);
       
       const turnstileToken = formData.get('turnstile') as string;
@@ -362,18 +368,72 @@ app.post('/jobs', async (c) => {
       
       const now = new Date();
       publicExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
-      
-      const apiKey = formData.get('api_key') as string;
-      if (apiKey) {
-        llm_credential_mode = 'request_once';
+    }
+
+    let settings = null;
+    if (ownerType === 'firebase') {
+      settings = await c.env.DB.prepare(`SELECT * FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
+    }
+
+    if (apiKey) {
+      llm_credential_mode = 'request_once';
+      llm_source = settings?.llm_source as string || 'openaicompatible';
+      llm_base_url = settings?.llm_base_url as string || '';
+      llm_model = settings?.llm_model as string || '';
+
+      if (c.env.USER_SETTINGS_SECRET) {
+        try {
+          const enc = await encryptApiKey(apiKey, c.env.USER_SETTINGS_SECRET, `job_llm_snapshot:${id}`);
+          encrypted_api_key_snapshot = enc.ciphertext;
+          api_key_snapshot_iv = enc.iv;
+          api_key_key_version = enc.keyVersion;
+        } catch (e) {
+          return c.json({ error: 'internal_error', message: 'Failed to encrypt API key' }, 500);
+        }
+      }
+
+      if (ownerType === 'firebase' && saveApiKey && c.env.USER_SETTINGS_SECRET) {
+        try {
+          const encUser = await encryptApiKey(apiKey, c.env.USER_SETTINGS_SECRET, `user_llm_settings:${uid}`);
+          await c.env.DB.prepare(`
+            INSERT INTO user_llm_settings (user_id, llm_source, llm_base_url, llm_model, encrypted_api_key, api_key_iv, api_key_key_version, updated_at)
+            VALUES (?, 'openaicompatible', '', '', ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+              encrypted_api_key = excluded.encrypted_api_key,
+              api_key_iv = excluded.api_key_iv,
+              api_key_key_version = excluded.api_key_key_version,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(uid, encUser.ciphertext, encUser.iv, encUser.keyVersion).run();
+        } catch (e) {
+          console.error("Failed to save api key to settings", e);
+        }
+      }
+    } else {
+      if (ownerType === 'firebase' && settings?.encrypted_api_key && settings?.api_key_iv) {
+        llm_credential_mode = 'user_settings';
+        llm_source = settings.llm_source as string || 'openaicompatible';
+        llm_base_url = settings.llm_base_url as string || '';
+        llm_model = settings.llm_model as string || '';
+
         if (c.env.USER_SETTINGS_SECRET) {
           try {
-            const enc = await encryptApiKey(apiKey, c.env.USER_SETTINGS_SECRET, `job_llm_snapshot:${id}`);
-            encrypted_api_key_snapshot = enc.ciphertext;
-            api_key_snapshot_iv = enc.iv;
-            api_key_key_version = enc.keyVersion;
+            const plainKey = await decryptApiKey(
+              settings.encrypted_api_key as string,
+              settings.api_key_iv as string,
+              c.env.USER_SETTINGS_SECRET,
+              `user_llm_settings:${uid}`
+            );
+            const reEncrypted = await encryptApiKey(
+              plainKey,
+              c.env.USER_SETTINGS_SECRET,
+              `job_llm_snapshot:${id}`
+            );
+            encrypted_api_key_snapshot = reEncrypted.ciphertext;
+            api_key_snapshot_iv = reEncrypted.iv;
+            api_key_key_version = reEncrypted.keyVersion;
           } catch (e) {
-            return c.json({ error: 'internal_error', message: 'Failed to encrypt API key' }, 500);
+            console.error("Failed to re-encrypt api key for snapshot", e);
+            return c.json({ error: 'internal_error', message: 'Failed to snapshot settings' }, 500);
           }
         }
       } else {
@@ -386,11 +446,7 @@ app.post('/jobs', async (c) => {
         const model = c.env.PUBLIC_FALLBACK_LLM_MODEL;
         const fallbackKey = c.env.PUBLIC_FALLBACK_LLM_API_KEY;
 
-        if (!source || !baseUrl || !model) {
-          return c.json({ error: 'Public fallback LLM is not configured. Please enter your own Ollama API key or sign in and configure Settings.' }, 503);
-        }
-
-        if ((source === 'openaicompatible' || source === 'gemini') && !fallbackKey) {
+        if (!source || !baseUrl || !model || ((source === 'openaicompatible' || source === 'gemini') && !fallbackKey)) {
           return c.json({ error: 'Public fallback LLM is not configured. Please enter your own Ollama API key or sign in and configure Settings.' }, 503);
         }
 
@@ -407,34 +463,6 @@ app.post('/jobs', async (c) => {
           } catch (e) {
             return c.json({ error: 'internal_error', message: 'Failed to encrypt fallback API key' }, 500);
           }
-        }
-      }
-    } else {
-      llm_credential_mode = 'user_settings';
-      const settings = await c.env.DB.prepare(`SELECT * FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
-      llm_source = settings?.llm_source as string || 'openaicompatible';
-      llm_base_url = settings?.llm_base_url as string || '';
-      llm_model = settings?.llm_model as string || '';
-
-      if (settings?.encrypted_api_key && settings?.api_key_iv && c.env.USER_SETTINGS_SECRET) {
-        try {
-          const plainKey = await decryptApiKey(
-            settings.encrypted_api_key as string,
-            settings.api_key_iv as string,
-            c.env.USER_SETTINGS_SECRET,
-            `user_llm_settings:${uid}`
-          );
-          const reEncrypted = await encryptApiKey(
-            plainKey,
-            c.env.USER_SETTINGS_SECRET,
-            `job_llm_snapshot:${id}`
-          );
-          encrypted_api_key_snapshot = reEncrypted.ciphertext;
-          api_key_snapshot_iv = reEncrypted.iv;
-          api_key_key_version = reEncrypted.keyVersion;
-        } catch (e) {
-          console.error("Failed to re-encrypt api key for snapshot", e);
-          return c.json({ error: 'internal_error', message: 'Failed to snapshot settings' }, 500);
         }
       }
     }

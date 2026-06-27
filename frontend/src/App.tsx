@@ -4,7 +4,7 @@ import { auth } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 
-import { setCurrentUser } from './authState';
+import { setCurrentUser, setAuthReady } from './authState';
 
 export default function App(props: { children?: JSX.Element }) {
   const [loading, setLoading] = createSignal(true);
@@ -16,11 +16,13 @@ export default function App(props: { children?: JSX.Element }) {
 
     if (isE2EAuthBypassEnabled && sessionStorage.getItem('e2e_token')) {
       setCurrentUser({ uid: 'e2e-user', email: sessionStorage.getItem('e2e_user_email') || 'e2e-user@example.com' } as User);
+      setAuthReady(true);
       setLoading(false);
       return () => {};
     }
     const unsub = onAuthStateChanged(auth, (u) => {
       setCurrentUser(u);
+      setAuthReady(true);
       setLoading(false);
     });
     return unsub;

@@ -1,19 +1,27 @@
-import { createSignal, onMount, Show } from 'solid-js';
-import { uploadJob } from '../api';
-import { auth } from '../firebase';
+import { createSignal, onMount, createEffect, Show } from 'solid-js';
+import { uploadJob, getLlmSettings, updateLlmSettings } from '../api';
+import { currentUser } from '../authState';
 
 export default function UploadForm() {
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal("");
   const [apiKey, setApiKey] = createSignal("");
+  const [saveApiKeyToSettings, setSaveApiKeyToSettings] = createSignal(false);
   const [turnstileToken, setTurnstileToken] = createSignal("");
   
-  const isGuest = () => !auth.currentUser;
+  const [showSavePrompt, setShowSavePrompt] = createSignal(false);
+  const [promptLoading, setPromptLoading] = createSignal(false);
+  const [promptDismissed, setPromptDismissed] = createSignal(false);
+  
+  const isGuest = () => !currentUser();
 
   onMount(() => {
-    if (isGuest()) {
+    // We can't definitively check isGuest() here because auth may still be initializing,
+    // but we can render turnstile anytime, or we could wait for authReady.
+    // Turnstile requires DOM element, let's render it when container exists.
+    const renderTurnstile = () => {
       // @ts-ignore
-      if (window.turnstile) {
+      if (window.turnstile && document.getElementById('turnstile-container')) {
         // @ts-ignore
         window.turnstile.render('#turnstile-container', {
           sitekey: import.meta.env.VITE_TURNSTILE_SITE_KEY || '1x00000000000000000000AA',
@@ -22,8 +30,42 @@ export default function UploadForm() {
           }
         });
       }
+    };
+    
+    // Slight delay to ensure DOM is ready
+    setTimeout(renderTurnstile, 500);
+  });
+
+  createEffect(() => {
+    if (currentUser() && apiKey() && !promptDismissed()) {
+      // Check if user has API key
+      getLlmSettings().then(data => {
+        if (!data.has_api_key && apiKey()) {
+          setShowSavePrompt(true);
+        }
+      }).catch(console.error);
+    } else {
+      setShowSavePrompt(false);
     }
   });
+
+  const handleSaveToSettings = async () => {
+    setPromptLoading(true);
+    try {
+      await updateLlmSettings({ api_key: apiKey().trim() });
+      setShowSavePrompt(false);
+      setPromptDismissed(true);
+    } catch (err: any) {
+      setError("Failed to save API key: " + err.message);
+    } finally {
+      setPromptLoading(false);
+    }
+  };
+
+  const handleDismissSave = () => {
+    setShowSavePrompt(false);
+    setPromptDismissed(true);
+  };
 
   const handleFileChange = async (e: Event) => {
     const input = e.target as HTMLInputElement;
@@ -57,7 +99,7 @@ export default function UploadForm() {
     
     try {
       for (let i = 0; i < input.files.length; i++) {
-        await uploadJob(input.files[i], turnstileToken(), apiKey(), clientId);
+        await uploadJob(input.files[i], turnstileToken(), apiKey(), clientId, saveApiKeyToSettings());
       }
       window.location.reload();
     } catch (err: any) {
@@ -92,59 +134,86 @@ export default function UploadForm() {
             <li>Results are deleted after 24 hours</li>
           </ul>
           
-          <div style="margin-top: 16px;">
-            <label style="display: block; font-weight: bold; margin-bottom: 4px;">Ollama API Key (Optional for stable conversion)</label>
-            <input 
-              type="password" 
-              class="input"
-              placeholder="sk-..." 
-              value={apiKey()} 
-              onInput={(e) => setApiKey(e.currentTarget.value)}
-              style="width: 100%; max-width: 400px;"
-            />
-            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-              This API key is used only for this conversion job and will not be saved.
-            </div>
-            
-            <details style="margin-top: 8px; font-size: 13px;">
-              <summary style="cursor: pointer; color: var(--accent); display: inline-flex; align-items: center; gap: 4px;">
-                <span style="display: inline-block; width: 16px; height: 16px; text-align: center; border-radius: 50%; background: var(--accent); color: white; line-height: 16px; font-size: 11px;">?</span>
-                How to get an Ollama API key
-              </summary>
-              <div style="margin-top: 8px; padding: 16px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--border);">
-                <ol style="margin: 0 0 16px 0; padding-left: 24px; line-height: 1.6;">
-                  <li>Ollamaにログインします</li>
-                  <li>上部メニューの <strong>Keys</strong> を開きます</li>
-                  <li><strong>Add API Key</strong> を押してキーを作成します</li>
-                  <li>表示されたキーをコピーします</li>
-                  <li>このアプリの “Ollama API Key” 欄に貼り付けます</li>
-                </ol>
-                
-                <div style="background: rgba(59, 130, 246, 0.1); padding: 12px; border-radius: 4px; border-left: 3px solid var(--accent); margin-bottom: 16px;">
-                  <p style="margin: 0 0 8px 0; line-height: 1.5;">APIキーなしでもお試し変換はできますが、無料/共有枠を使うため、混雑時や制限到達時に失敗することがあります。</p>
-                  <p style="margin: 0; line-height: 1.5;">安定して使うには、自分のOllama API keyを入力してください。</p>
-                </div>
-
-                <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 16px;">
-                  <div style="flex: 1; min-width: 200px;">
-                    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Keys タブの場所</div>
-                    <img src="/guide/ollama-api-key-keys.png" alt="Ollama API Keys UI" style="max-width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.2);" onError={(e) => e.currentTarget.style.display='none'} />
-                  </div>
-                  <div style="flex: 1; min-width: 200px;">
-                    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">無料枠・使用量の制限</div>
-                    <img src="/guide/ollama-cloud-usage.png" alt="Ollama Usage Limits" style="max-width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.2);" onError={(e) => e.currentTarget.style.display='none'} />
-                  </div>
-                </div>
-              </div>
-            </details>
-          </div>
-          
           <div id="turnstile-container" style="margin-top: 16px;"></div>
           <Show when={turnstileToken()}>
             <div data-testid="turnstile-ready" style="display: none;"></div>
           </Show>
         </div>
       </Show>
+
+      <div style="margin-top: 16px; margin-bottom: 24px;">
+        <label style="display: block; font-weight: bold; margin-bottom: 4px;">Ollama API Key (Optional for stable conversion)</label>
+        <input 
+          type="password" 
+          class="input"
+          placeholder="sk-..." 
+          value={apiKey()} 
+          onInput={(e) => setApiKey(e.currentTarget.value)}
+          style="width: 100%; max-width: 400px;"
+        />
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+          <Show when={isGuest()}>
+            このAPI keyは今回の変換ジョブにのみ使用され、ログインしていないため保存されません。<br/>
+            Googleログインすると、アカウント設定に保存できます。
+          </Show>
+          <Show when={!isGuest()}>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 8px;">
+              <input 
+                type="checkbox" 
+                checked={saveApiKeyToSettings()} 
+                onChange={(e) => setSaveApiKeyToSettings(e.currentTarget.checked)}
+              />
+              Save this API key to my account settings
+            </label>
+          </Show>
+        </div>
+        
+        <Show when={showSavePrompt()}>
+          <div style="margin-top: 16px; padding: 16px; background: var(--bg-color, #1f2937); border: 1px solid var(--accent); border-radius: 8px;">
+            <p style="margin: 0 0 12px 0;">入力済みのOllama APIキーをアカウント設定に保存しますか？<br/>保存すると次回から入力不要になります。</p>
+            <div style="display: flex; gap: 12px;">
+              <button class="btn" onClick={handleSaveToSettings} disabled={promptLoading()}>
+                {promptLoading() ? 'Saving...' : '保存する'}
+              </button>
+              <button class="btn btn-secondary" onClick={handleDismissSave} disabled={promptLoading()} style="background: transparent; border: 1px solid var(--border);">
+                今回は保存しない
+              </button>
+            </div>
+          </div>
+        </Show>
+        
+        <details style="margin-top: 16px; font-size: 13px;">
+          <summary style="cursor: pointer; color: var(--accent); display: inline-flex; align-items: center; gap: 4px;">
+            <span style="display: inline-block; width: 16px; height: 16px; text-align: center; border-radius: 50%; background: var(--accent); color: white; line-height: 16px; font-size: 11px;">?</span>
+            How to get an Ollama API key
+          </summary>
+          <div style="margin-top: 8px; padding: 16px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--border);">
+            <ol style="margin: 0 0 16px 0; padding-left: 24px; line-height: 1.6;">
+              <li>Ollamaにログインします</li>
+              <li>上部メニューの <strong>Keys</strong> を開きます</li>
+              <li><strong>Add API Key</strong> を押してキーを作成します</li>
+              <li>表示されたキーをコピーします</li>
+              <li>このアプリの “Ollama API Key” 欄に貼り付けます</li>
+            </ol>
+            
+            <div style="background: rgba(59, 130, 246, 0.1); padding: 12px; border-radius: 4px; border-left: 3px solid var(--accent); margin-bottom: 16px;">
+              <p style="margin: 0 0 8px 0; line-height: 1.5;">APIキーなしでもお試し変換はできますが、無料/共有枠を使うため、混雑時や制限到達時に失敗することがあります。</p>
+              <p style="margin: 0; line-height: 1.5;">安定して使うには、自分のOllama API keyを入力してください。</p>
+            </div>
+
+            <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 16px;">
+              <div style="flex: 1; min-width: 200px;">
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Keys タブの場所</div>
+                <img src="/guide/ollama-api-key-keys.png" alt="Ollama API Keys UI" style="max-width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.2);" onError={(e) => e.currentTarget.style.display='none'} />
+              </div>
+              <div style="flex: 1; min-width: 200px;">
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">無料枠・使用量の制限</div>
+                <img src="/guide/ollama-cloud-usage.png" alt="Ollama Usage Limits" style="max-width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.2);" onError={(e) => e.currentTarget.style.display='none'} />
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
 
       {loading() ? (
         <div style="text-align: center; padding: 40px; border: 2px dashed var(--border);">

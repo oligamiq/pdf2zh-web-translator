@@ -37,6 +37,7 @@ export async function logout() {
   }
 
   await auth.signOut();
+  setCurrentUser(null);
 }
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   const token = await getToken();
@@ -114,12 +115,13 @@ export async function getJob(id: string) {
   return apiFetch(`/jobs/${id}`).then(r => r.json());
 }
 
-export async function uploadJob(file: File, turnstileToken?: string, apiKey?: string, clientId?: string) {
+export async function uploadJob(file: File, turnstileToken?: string, apiKey?: string, clientId?: string, saveApiKeyToSettings?: boolean) {
   const formData = new FormData();
   formData.append('pdf', file);
   if (turnstileToken) formData.append('turnstile', turnstileToken);
   if (apiKey) formData.append('api_key', apiKey);
   if (clientId) formData.append('client_id', clientId);
+  if (saveApiKeyToSettings) formData.append('save_api_key_to_settings', 'true');
   
   const res = await apiFetch('/jobs', {
     method: 'POST',
