@@ -116,10 +116,39 @@ async function ensureUserProviders(env: Env, uid: string) {
   const oldSettings = await env.DB.prepare(`SELECT llm_source, llm_base_url, llm_model, encrypted_api_key, api_key_iv, api_key_key_version FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
   if (oldSettings && oldSettings.encrypted_api_key && oldSettings.llm_source) {
     const newId = crypto.randomUUID();
+    
+    let encKey = oldSettings.encrypted_api_key as string;
+    let iv = oldSettings.api_key_iv as string;
+    let keyVersion = (oldSettings.api_key_key_version as string) || 'v1';
+    
+    if (env.USER_SETTINGS_SECRET) {
+      try {
+        const plainKey = await decryptApiKey(
+          encKey,
+          iv,
+          env.USER_SETTINGS_SECRET,
+          `user_llm_settings:${uid}`
+        );
+        const reEncrypted = await encryptApiKey(
+          plainKey,
+          env.USER_SETTINGS_SECRET,
+          `user_api_provider:${uid}`
+        );
+        encKey = reEncrypted.ciphertext;
+        iv = reEncrypted.iv;
+        keyVersion = reEncrypted.keyVersion;
+      } catch (e) {
+        console.error("Migration decryption failed", e);
+      }
+    }
+    
+    let displayName = (oldSettings.llm_source as string) === 'openaicompatible' ? 'Ollama' : 
+                      (oldSettings.llm_source as string).charAt(0).toUpperCase() + (oldSettings.llm_source as string).slice(1);
+    
     await env.DB.prepare(`
       INSERT INTO user_api_providers (id, user_id, display_name, provider_type, base_url, model, encrypted_api_key, api_key_iv, api_key_key_version, priority, enabled)
-      VALUES (?, ?, 'Ollama', ?, ?, ?, ?, ?, ?, 1, 1)
-    `).bind(newId, uid, oldSettings.llm_source, oldSettings.llm_base_url, oldSettings.llm_model, oldSettings.encrypted_api_key, oldSettings.api_key_iv, oldSettings.api_key_key_version || 'v1').run();
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
+    `).bind(newId, uid, displayName, oldSettings.llm_source, oldSettings.llm_base_url, oldSettings.llm_model, encKey, iv, keyVersion).run();
     const res2 = await env.DB.prepare(`SELECT * FROM user_api_providers WHERE user_id = ? ORDER BY priority ASC, created_at ASC`).bind(uid).all();
     return res2.results;
   }
@@ -240,10 +269,105 @@ app.use('/settings/*', authMiddleware)
 
 
 app.get('/settings/api/basic', async (c) => {
-  return c.json({});
+  const uid = c.get('uid') as string;
+  let default_target_language = 'zh';
+  const basicSettings = await c.env.DB.prepare(`SELECT language FROM user_basic_settings WHERE user_id = ?`).bind(uid).first();
+  if (basicSettings && basicSettings.language) {
+    default_target_language = basicSettings.language as string;
+  }
+  
+  const providers = await ensureUserProviders(c.env, uid);
+  const ollamaProvider = providers.find((p: any) => p.provider_type === 'openaicompatible') || providers[0];
+  
+  let has_api_key = false;
+  let api_key_last4 = null;
+  
+  if (ollamaProvider && ollamaProvider.encrypted_api_key) {
+    has_api_key = true;
+    if (c.env.USER_SETTINGS_SECRET && ollamaProvider.api_key_iv) {
+      try {
+        const plainKey = await decryptApiKey(
+          ollamaProvider.encrypted_api_key as string,
+          ollamaProvider.api_key_iv as string,
+          c.env.USER_SETTINGS_SECRET,
+          `user_api_provider:${uid}`
+        );
+        if (plainKey.length >= 4) {
+          api_key_last4 = plainKey.slice(-4);
+        } else {
+          api_key_last4 = plainKey;
+        }
+      } catch (e) {
+        console.error("Failed to decrypt for last4", e);
+      }
+    }
+  }
+
+  return c.json({
+    default_target_language,
+    ollama: {
+      has_api_key,
+      api_key_last4
+    }
+  });
 });
 
 app.put('/settings/api/basic', async (c) => {
+  const uid = c.get('uid') as string;
+  const body = await c.req.json();
+  const { default_target_language, ollama_api_key, clear_ollama_api_key } = body;
+  
+  if (default_target_language !== undefined) {
+    await c.env.DB.prepare(`
+      INSERT INTO user_basic_settings (user_id, language, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id) DO UPDATE SET
+        language = excluded.language,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(uid, default_target_language).run();
+  }
+  
+  if (ollama_api_key !== undefined || clear_ollama_api_key) {
+    const providers = await ensureUserProviders(c.env, uid);
+    let providerToUpdate = providers.find((p: any) => p.provider_type === 'openaicompatible');
+    if (!providerToUpdate && providers.length > 0) {
+      providerToUpdate = providers[0];
+    }
+    
+    if (providerToUpdate) {
+      let newEncryptedKey = providerToUpdate.encrypted_api_key as string | null;
+      let newIv = providerToUpdate.api_key_iv as string | null;
+      let newKeyVersion = providerToUpdate.api_key_key_version as string;
+
+      if (clear_ollama_api_key) {
+        newEncryptedKey = null;
+        newIv = null;
+      } else if (ollama_api_key) {
+        if (!c.env.USER_SETTINGS_SECRET) return c.json({ error: 'server_configuration_error' }, 500);
+        const enc = await encryptApiKey(ollama_api_key, c.env.USER_SETTINGS_SECRET, `user_api_provider:${uid}`);
+        newEncryptedKey = enc.ciphertext;
+        newIv = enc.iv;
+        newKeyVersion = enc.keyVersion;
+      }
+      
+      await c.env.DB.prepare(`
+        UPDATE user_api_providers SET
+          encrypted_api_key = ?,
+          api_key_iv = ?,
+          api_key_key_version = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+      `).bind(newEncryptedKey, newIv, newKeyVersion, providerToUpdate.id, uid).run();
+    } else if (ollama_api_key && !clear_ollama_api_key) {
+      if (!c.env.USER_SETTINGS_SECRET) return c.json({ error: 'server_configuration_error' }, 500);
+      const enc = await encryptApiKey(ollama_api_key, c.env.USER_SETTINGS_SECRET, `user_api_provider:${uid}`);
+      await c.env.DB.prepare(`
+        INSERT INTO user_api_providers (id, user_id, display_name, provider_type, base_url, model, encrypted_api_key, api_key_iv, api_key_key_version, priority, enabled)
+        VALUES (?, ?, 'Ollama', 'openaicompatible', '', '', ?, ?, ?, 1, 1)
+      `).bind(crypto.randomUUID(), uid, enc.ciphertext, enc.iv, enc.keyVersion).run();
+    }
+  }
+  
   return c.json({ success: true });
 });
 
@@ -339,7 +463,59 @@ app.delete('/settings/api/providers/:id', async (c) => {
 });
 
 app.post('/settings/api/providers/:id/test', async (c) => {
-  return c.json({ ok: true });
+  const uid = c.get('uid') as string;
+  const id = c.req.param('id');
+  
+  const provider = await c.env.DB.prepare(`SELECT * FROM user_api_providers WHERE id = ? AND user_id = ?`).bind(id, uid).first();
+  if (!provider) return c.json({ error: 'not_found' }, 404);
+  
+  let apiKey = '';
+  if (provider.encrypted_api_key && provider.api_key_iv && c.env.USER_SETTINGS_SECRET) {
+    try {
+      apiKey = await decryptApiKey(
+        provider.encrypted_api_key as string,
+        provider.api_key_iv as string,
+        c.env.USER_SETTINGS_SECRET,
+        `user_api_provider:${uid}`
+      );
+    } catch (e) {
+      return c.json({ ok: false, error: 'decryption_failed' });
+    }
+  }
+  
+  if (!provider.base_url) {
+    return c.json({ ok: false, error: 'missing_base_url' });
+  }
+
+  let testUrl = provider.base_url as string;
+  testUrl = testUrl.replace(/\/$/, '') + '/models';
+  
+  try {
+    const headers: Record<string, string> = {};
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
+    const resp = await fetch(testUrl, {
+      method: 'GET',
+      headers,
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (resp.ok) {
+      return c.json({ ok: true });
+    } else {
+      const text = await resp.text().catch(() => '');
+      return c.json({ ok: false, error: `HTTP ${resp.status}`, details: text });
+    }
+  } catch (e: any) {
+    return c.json({ ok: false, error: e.message || 'network_error' });
+  }
 });
 
 app.post('/settings/api/providers/reorder', async (c) => {
