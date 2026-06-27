@@ -123,15 +123,39 @@ async def run_job(job_id: str, llm_settings: dict = None):
     base_url = llm.get("base_url") or os.environ.get("PDF2ZH_OPENAI_COMPATIBLE_BASE_URL", "")
     api_key = llm.get("api_key") or os.environ.get("PDF2ZH_OPENAI_COMPATIBLE_API_KEY", "")
     
+    service_lower = service.lower()
+    service_map = {
+        "openaicompatible": "OpenAICompatible",
+        "openai": "OpenAI",
+        "deepseek": "DeepSeek",
+        "gemini": "Gemini"
+    }
+    engine_type = service_map.get(service_lower, "OpenAICompatible")
+    
+    translate_engine_settings = {"translate_engine_type": engine_type}
+    if engine_type == "OpenAICompatible":
+        translate_engine_settings["openai_compatible_model"] = model
+        translate_engine_settings["openai_compatible_base_url"] = base_url
+        translate_engine_settings["openai_compatible_api_key"] = api_key
+    elif engine_type == "OpenAI":
+        translate_engine_settings["openai_model"] = model
+        translate_engine_settings["openai_base_url"] = base_url
+        translate_engine_settings["openai_api_key"] = api_key
+    elif engine_type == "DeepSeek":
+        translate_engine_settings["deepseek_model"] = model
+        translate_engine_settings["deepseek_api_key"] = api_key
+    elif engine_type == "Gemini":
+        translate_engine_settings["gemini_model"] = model
+        translate_engine_settings["gemini_api_key"] = api_key
+        
+    lang_in = llm.get("lang_in", "en")
+    lang_out = llm.get("lang_out", "ja")
+    watermark_output_mode = llm.get("watermark_output_mode", "no_watermark")
+
     settings = SettingsModel(
-        lang_in="en",
-        lang_out="ja",
-        service=service,
-        model=model,
-        base_url=base_url,
-        api_key=api_key,
-        output=output_dir,
-        watermark_output_mode="no_watermark"
+        translation={"lang_in": lang_in, "lang_out": lang_out, "output": output_dir},
+        pdf={"watermark_output_mode": watermark_output_mode},
+        translate_engine_settings=translate_engine_settings
     )
     
     # Run async stream and log
@@ -165,7 +189,6 @@ async def agent_loop():
     
     async with httpx.AsyncClient(timeout=30.0) as client:
         while True:
-            await asyncio.sleep(5)
             try:
                 resp = await client.post(
                     f"{worker_api}/agent/claim",
@@ -173,47 +196,100 @@ async def agent_loop():
                     headers={"Authorization": f"Bearer {agent_token}"}
                 )
                 if resp.status_code != 200:
+                    await asyncio.sleep(5)
                     continue
                     
                 data = resp.json()
                 job = data.get("job")
                 if not job:
+                    await asyncio.sleep(5)
                     continue
                     
                 job_id = job["id"]
                 logger.info(f"Claimed job: {job_id}")
                 
-                llm_settings = job.get("llm_settings", {})
-                
-                input_path = os.path.join(UPLOAD_DIR, job_id, "input.pdf")
-                output_dir = os.path.join(OUTPUT_DIR, job_id)
-                log_path = os.path.join(LOG_DIR, f"{job_id}.log")
-                
-                os.makedirs(output_dir, exist_ok=True)
-                
-                # Extract settings
-                service = llm_settings.get("source") or os.environ.get("PDF2ZH_TRANSLATOR_SERVICE", "openaicompatible")
-                model = llm_settings.get("model") or os.environ.get("PDF2ZH_OPENAI_COMPATIBLE_MODEL", "")
-                base_url = llm_settings.get("base_url") or os.environ.get("PDF2ZH_OPENAI_COMPATIBLE_BASE_URL", "")
-                api_key = llm_settings.get("api_key") or os.environ.get("PDF2ZH_OPENAI_COMPATIBLE_API_KEY", "")
-                
-                settings = SettingsModel(
-                    lang_in="en",
-                    lang_out="ja",
-                    service=service,
-                    model=model,
-                    base_url=base_url,
-                    api_key=api_key,
-                    output=output_dir,
-                    watermark_output_mode="no_watermark"
-                )
-                
                 error = None
                 log_tail = []
-                last_progress_time = asyncio.get_event_loop().time()
-                last_progress_percent = -1.0
                 
+                async def report_progress(percent, phase, message, status="running", error_msg=None):
+                    payload = {
+                        "status": status,
+                        "progress_percent": percent,
+                        "progress_phase": phase,
+                        "progress_message": message
+                    }
+                    if error_msg:
+                        payload["error_message"] = error_msg
+                        payload["log_tail"] = "\n".join(log_tail)[-4096:]
+                    
+                    try:
+                        await client.post(
+                            f"{worker_api}/agent/jobs/{job_id}/progress",
+                            json=payload,
+                            headers={"Authorization": f"Bearer {agent_token}"}
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to report progress: {e}")
+
                 try:
+                    await report_progress(5, "claimed", "Job claimed")
+                    
+                    llm_settings = job.get("llm_settings", {})
+                    
+                    input_path = os.path.join(UPLOAD_DIR, job_id, "input.pdf")
+                    output_dir = os.path.join(OUTPUT_DIR, job_id)
+                    log_path = os.path.join(LOG_DIR, f"{job_id}.log")
+                    
+                    os.makedirs(output_dir, exist_ok=True)
+                    
+                    await report_progress(10, "preparing", "Preparing input PDF")
+                    
+                    # Extract settings
+                    service = llm_settings.get("source") or os.environ.get("PDF2ZH_TRANSLATOR_SERVICE", "openaicompatible")
+                    model = llm_settings.get("model") or os.environ.get("PDF2ZH_OPENAI_COMPATIBLE_MODEL", "")
+                    base_url = llm_settings.get("base_url") or os.environ.get("PDF2ZH_OPENAI_COMPATIBLE_BASE_URL", "")
+                    api_key = llm_settings.get("api_key") or os.environ.get("PDF2ZH_OPENAI_COMPATIBLE_API_KEY", "")
+                    
+                    service_lower = service.lower()
+                    service_map = {
+                        "openaicompatible": "OpenAICompatible",
+                        "openai": "OpenAI",
+                        "deepseek": "DeepSeek",
+                        "gemini": "Gemini"
+                    }
+                    engine_type = service_map.get(service_lower, "OpenAICompatible")
+                    
+                    translate_engine_settings = {"translate_engine_type": engine_type}
+                    if engine_type == "OpenAICompatible":
+                        translate_engine_settings["openai_compatible_model"] = model
+                        translate_engine_settings["openai_compatible_base_url"] = base_url
+                        translate_engine_settings["openai_compatible_api_key"] = api_key
+                    elif engine_type == "OpenAI":
+                        translate_engine_settings["openai_model"] = model
+                        translate_engine_settings["openai_base_url"] = base_url
+                        translate_engine_settings["openai_api_key"] = api_key
+                    elif engine_type == "DeepSeek":
+                        translate_engine_settings["deepseek_model"] = model
+                        translate_engine_settings["deepseek_api_key"] = api_key
+                    elif engine_type == "Gemini":
+                        translate_engine_settings["gemini_model"] = model
+                        translate_engine_settings["gemini_api_key"] = api_key
+                    
+                    await report_progress(15, "validating", "Validating translation settings")
+                    
+                    lang_in = job.get("lang_in", "en")
+                    lang_out = job.get("lang_out", "ja")
+                    watermark_output_mode = job.get("watermark_output_mode", "no_watermark")
+                    
+                    settings = SettingsModel(
+                        translation={"lang_in": lang_in, "lang_out": lang_out, "output": output_dir},
+                        pdf={"watermark_output_mode": watermark_output_mode},
+                        translate_engine_settings=translate_engine_settings
+                    )
+                    
+                    last_progress_time = asyncio.get_event_loop().time()
+                    last_progress_percent = -1.0
+                    
                     async for event in do_translate_async_stream(settings, input_path):
                         ev_type = event.get("type")
                         
@@ -237,43 +313,38 @@ async def agent_loop():
                             if ev_type == "finish" or now - last_progress_time > 0.5 or abs(percent - last_progress_percent) > 0.05:
                                 last_progress_time = now
                                 last_progress_percent = percent
+                                await report_progress(percent, event.get("phase", "processing"), event.get("message", ""))
                                 
-                                try:
-                                    await client.post(
-                                        f"{worker_api}/agent/jobs/{job_id}/progress",
-                                        json={
-                                            "progress_percent": percent,
-                                            "progress_phase": event.get("phase", "processing"),
-                                            "progress_message": event.get("message", "")
-                                        },
-                                        headers={"Authorization": f"Bearer {agent_token}"}
-                                    )
-                                except Exception as e:
-                                    logger.warning(f"Failed to report progress: {e}")
-                                    
-                except Exception as e:
-                    logger.exception(f"Job {job_id} failed")
-                    error = str(e)
-                    if api_key and api_key in error:
-                        error = error.replace(api_key, "***")
-                        
-                if error:
-                    await client.post(
-                        f"{worker_api}/agent/jobs/{job_id}/failed",
-                        json={
-                            "error": error,
-                            "log_tail": "\\n".join(log_tail)
-                        },
-                        headers={"Authorization": f"Bearer {agent_token}"}
-                    )
-                else:
+                    # If stream finishes normally, mark as succeeded
                     await client.post(
                         f"{worker_api}/agent/jobs/{job_id}/succeeded",
                         headers={"Authorization": f"Bearer {agent_token}"}
                     )
+                                    
+                except Exception as e:
+                    import traceback
+                    logger.exception(f"Job {job_id} failed")
+                    error_str = str(e)
+                    if api_key and api_key in error_str:
+                        error_str = error_str.replace(api_key, "***")
                     
+                    tb_str = traceback.format_exc()
+                    if api_key and api_key in tb_str:
+                        tb_str = tb_str.replace(api_key, "***")
+                        
+                    log_tail.append(tb_str)
+                    
+                    # Ensure failed progress is updated
+                    await report_progress(
+                        percent=100,
+                        phase="failed",
+                        message="Conversion failed",
+                        status="failed",
+                        error_msg=error_str
+                    )
             except Exception as e:
                 logger.error(f"Agent loop error: {e}")
+                await asyncio.sleep(5)
 
 @app.on_event("startup")
 async def startup_event():

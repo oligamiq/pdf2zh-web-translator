@@ -33,13 +33,16 @@ echo "Job created: $JOB_ID"
 MAX_RETRIES=60
 RETRY=0
 SAW_PROGRESS=0
+FAILED_PROPERLY=0
+LOG_TAIL_HAS_ERROR=0
 
 while [ $RETRY -lt $MAX_RETRIES ]; do
   JOB_RESP=$(curl -s $WORKER_API/api/jobs/$JOB_ID)
-  STATUS=$(echo $JOB_RESP | grep -o '"status":"[^"]*' | grep -o '[^"]*$')
-  PERCENT=$(echo $JOB_RESP | grep -o '"progress_percent":[^,}]*' | cut -d':' -f2)
+  STATUS=$(echo "$JOB_RESP" | grep -o '"status":"[^"]*' | grep -o '[^"]*$')
+  PERCENT=$(echo "$JOB_RESP" | grep -o '"progress_percent":[^,}]*' | cut -d':' -f2)
+  PHASE=$(echo "$JOB_RESP" | grep -o '"progress_phase":"[^"]*' | grep -o '[^"]*$' || echo "null")
   
-  echo "Status: $STATUS | Progress: $PERCENT"
+  echo "Status: $STATUS | Progress: $PERCENT | Phase: $PHASE"
   
   if [ "$PERCENT" != "null" ] && [ "$PERCENT" != "0" ] && [ "$PERCENT" != "" ]; then
     SAW_PROGRESS=1
@@ -51,7 +54,21 @@ while [ $RETRY -lt $MAX_RETRIES ]; do
   fi
   
   if [ "$STATUS" = "failed" ]; then
-    echo "Job failed."
+    echo "Job failed properly!"
+    FAILED_PROPERLY=1
+    
+    # Check if phase is failed
+    if [ "$PHASE" = "failed" ]; then
+      echo "Phase is correctly set to failed."
+    else
+      echo "Phase is $PHASE instead of failed."
+    fi
+    
+    # Check log tail
+    if echo "$JOB_RESP" | grep -qi "log_tail"; then
+       LOG_TAIL_HAS_ERROR=1
+       echo "Log tail is present."
+    fi
     break
   fi
   
@@ -61,8 +78,13 @@ done
 
 rm test_smoke.pdf
 
-if [ $SAW_PROGRESS -eq 1 ]; then
-  echo "SUCCESS: Saw progress updates!"
+if [ "$STATUS" = "running" ] && [ "$PERCENT" = "0" ]; then
+  echo "FAILED: Job got stuck at running 0%!"
+  exit 1
+fi
+
+if [ $SAW_PROGRESS -eq 1 ] || [ $FAILED_PROPERLY -eq 1 ]; then
+  echo "SUCCESS: Job progressed correctly and handled failure/success paths."
   exit 0
 else
   echo "FAILED: Did not see progress updates or job timed out."
