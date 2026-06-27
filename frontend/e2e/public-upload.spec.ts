@@ -81,6 +81,19 @@ test.describe('Public Upload UI', () => {
     // Check Guest mode header
     await expect(page.locator('span', { hasText: 'Guest mode' })).toBeVisible();
 
+    // Check Sign in with Google button is present
+    const signInBtn = page.locator('button', { hasText: 'Sign in with Google' });
+    await expect(signInBtn).toBeVisible();
+
+    // Verify it doesn't navigate to /login when clicked
+    // We mock loginWithGoogle in actual code or just click and verify URL stays '/'
+    // Since Firebase auth isn't mocked at the Playwright level (it tries to open popup),
+    // we can intercept the popup or just verify the URL before the popup fully loads.
+    // However, it's safer to just check that the href is not /login since it's a button,
+    // and click it, then check the URL is still /
+    await signInBtn.click();
+    expect(page.url().endsWith('/')).toBeTruthy();
+
     // Check Guest mode info box
     await expect(page.locator('text=Max file size: 5 MiB')).toBeVisible();
 
@@ -162,5 +175,12 @@ test.describe('Public Upload UI', () => {
 
     // Verify error message on UI
     await expect(page.locator('text=APIキーなしのお試し変換は現在利用できません。')).toBeVisible();
+  });
+
+  test('should redirect /login to /', async ({ page }) => {
+    await page.goto('/login');
+    // It should immediately redirect to /
+    await expect(page).toHaveURL(/.*\/$/);
+    await expect(page.locator('span', { hasText: 'Guest mode' })).toBeVisible();
   });
 });

@@ -1,13 +1,13 @@
 import { createSignal, onMount, Show } from 'solid-js';
 import { checkHealth, logout, isAuthenticated } from '../api';
-import { useNavigate, A } from '@solidjs/router';
+import { A } from '@solidjs/router';
 import JobList from '../components/JobList';
 import UploadForm from '../components/UploadForm';
-import { auth } from '../firebase';
+import { auth, loginWithGoogle } from '../firebase';
 
 export default function Dashboard() {
-  const navigate = useNavigate();
   const [health, setHealth] = createSignal<string>('Checking...');
+  const [loginError, setLoginError] = createSignal<string>('');
   const isGuest = () => !isAuthenticated();
 
   const fetchHealth = async () => {
@@ -25,11 +25,17 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     await logout();
-    navigate('/login');
+    // After logout, user stays on Dashboard in Guest mode
   };
 
-  const handleLogin = () => {
-    navigate('/login');
+  const handleLogin = async () => {
+    setLoginError('');
+    try {
+      await loginWithGoogle();
+      // Auth state will automatically update via App.tsx onAuthStateChanged
+    } catch (e: any) {
+      setLoginError(e.message);
+    }
   };
 
   return (
@@ -41,6 +47,7 @@ export default function Dashboard() {
           <Show when={isGuest()}>
              <span style="margin-right: 16px; color: var(--accent); font-weight: bold;">Guest mode</span>
              <button class="btn" onClick={handleLogin}>Sign in with Google</button>
+             {loginError() && <div style="color: var(--danger); margin-top: 8px; font-size: 14px;">{loginError()}</div>}
           </Show>
           <Show when={!isGuest()}>
              <span style="margin-right: 16px;">{auth.currentUser?.email || (import.meta.env.MODE === 'e2e' && import.meta.env.VITE_E2E_AUTH_BYPASS === 'true' ? sessionStorage.getItem('e2e_user_email') : '')}</span>
