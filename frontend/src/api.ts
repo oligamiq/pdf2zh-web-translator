@@ -118,13 +118,12 @@ export async function getJob(id: string) {
   return apiFetch(`/jobs/${id}`).then(r => r.json());
 }
 
-export async function uploadJob(file: File, turnstileToken?: string, apiKey?: string, clientId?: string, saveApiKeyToSettings?: boolean) {
+export async function uploadJob(file: File, targetLanguage: string, turnstileToken?: string, clientId?: string) {
   const formData = new FormData();
   formData.append('pdf', file);
+  formData.append('target_language', targetLanguage);
   if (turnstileToken) formData.append('turnstile', turnstileToken);
-  if (apiKey) formData.append('api_key', apiKey);
   if (clientId) formData.append('client_id', clientId);
-  if (saveApiKeyToSettings) formData.append('save_api_key_to_settings', 'true');
   
   const res = await apiFetch('/jobs', {
     method: 'POST',
@@ -163,22 +162,69 @@ export async function downloadJob(id: string) {
   return apiFetch(`/jobs/${id}/download`);
 }
 
-export async function getLlmSettings() {
-  return apiFetch('/settings/llm').then(r => r.json());
+export interface ApiBasicSettings {
+  target_language?: string;
+  has_api_key?: boolean; // For legacy or general indicator, if needed
 }
 
-export async function updateLlmSettings(payload: { llm_source?: string, llm_base_url?: string, llm_model?: string, api_key?: string }) {
-  return apiFetch('/settings/llm', {
+export async function getApiBasicSettings(): Promise<ApiBasicSettings> {
+  return apiFetch('/settings/api/basic').then(r => r.json());
+}
+
+export async function updateApiBasicSettings(payload: { target_language?: string, api_key?: string }) {
+  return apiFetch('/settings/api/basic', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }).then(r => r.json());
 }
 
-export async function clearLlmApiKey() {
-  return apiFetch('/settings/llm', {
+export interface ApiProvider {
+  id: number;
+  provider_name: string;
+  base_url?: string;
+  model_name?: string;
+  priority: number;
+  enabled: boolean;
+  has_api_key?: boolean;
+}
+
+export async function getApiProviders(): Promise<ApiProvider[]> {
+  return apiFetch('/settings/api/providers').then(r => r.json());
+}
+
+export async function addApiProvider(payload: any) {
+  return apiFetch('/settings/api/providers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(r => r.json());
+}
+
+export async function updateApiProvider(id: number, payload: any) {
+  return apiFetch(`/settings/api/providers/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ clear_api_key: true }),
+    body: JSON.stringify(payload),
+  }).then(r => r.json());
+}
+
+export async function deleteApiProvider(id: number) {
+  return apiFetch(`/settings/api/providers/${id}`, {
+    method: 'DELETE',
+  }).then(r => r.json());
+}
+
+export async function testApiProvider(id: number) {
+  return apiFetch(`/settings/api/providers/${id}/test`, {
+    method: 'POST',
+  }).then(r => r.json());
+}
+
+export async function reorderApiProviders(payload: { provider_ids: number[] }) {
+  return apiFetch('/settings/api/providers/reorder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   }).then(r => r.json());
 }

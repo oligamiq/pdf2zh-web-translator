@@ -90,7 +90,7 @@ export default function Dashboard() {
               {(u) => (
                 <>
                   <span style="margin-right: 16px;">{u().email}</span>
-                  <A href="/settings/llm" class="btn" style="margin-right: 8px;">Settings</A>
+                  <A href="/settings" class="btn" style="margin-right: 8px;">Settings</A>
                   <button class="btn btn-danger" onClick={handleLogout}>Sign out</button>
                 </>
               )}

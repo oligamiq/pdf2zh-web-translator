@@ -5,6 +5,7 @@ import App from './App';
 import Dashboard from './pages/Dashboard';
 import JobDetail from './pages/JobDetail';
 import Settings from './pages/Settings';
+import AdvancedSettings from './pages/AdvancedSettings';
 
 const root = document.getElementById('root');
 
@@ -20,7 +21,8 @@ render(
       <Route path="/" component={Dashboard} />
       <Route path="/login" component={() => <Navigate href="/" />} />
       <Route path="/jobs/:id" component={JobDetail} />
-      <Route path="/settings/llm" component={Settings} />
+      <Route path="/settings" component={Settings} />
+      <Route path="/settings/advanced" component={AdvancedSettings} />
     </Router>
   ),
   root!
