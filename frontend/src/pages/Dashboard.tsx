@@ -8,6 +8,7 @@ import { auth, loginWithGoogle } from '../firebase';
 export default function Dashboard() {
   const [health, setHealth] = createSignal<string>('Checking...');
   const [loginError, setLoginError] = createSignal<string>('');
+  const [signingIn, setSigningIn] = createSignal(false);
   const isGuest = () => !isAuthenticated();
 
   const fetchHealth = async () => {
@@ -29,12 +30,37 @@ export default function Dashboard() {
   };
 
   const handleLogin = async () => {
+    if (signingIn()) return;
+
+    setSigningIn(true);
     setLoginError('');
+
     try {
       await loginWithGoogle();
       // Auth state will automatically update via App.tsx onAuthStateChanged
     } catch (e: any) {
-      setLoginError(e.message);
+      const code = e?.code;
+
+      if (
+        code === 'auth/cancelled-popup-request' ||
+        code === 'auth/popup-closed-by-user'
+      ) {
+        return;
+      }
+
+      if (code === 'auth/popup-blocked') {
+        setLoginError('Popup was blocked. Please allow popups and try again.');
+        return;
+      }
+
+      if (code === 'auth/unauthorized-domain') {
+        setLoginError('This domain is not authorized for Firebase sign-in.');
+        return;
+      }
+
+      setLoginError('Failed to sign in with Google. Please try again.');
+    } finally {
+      setSigningIn(false);
     }
   };
 
@@ -46,7 +72,9 @@ export default function Dashboard() {
           <span style="margin-right: 16px; color: var(--text-muted);">API Status: <strong style="color: var(--text);">{health()}</strong></span>
           <Show when={isGuest()}>
              <span style="margin-right: 16px; color: var(--accent); font-weight: bold;">Guest mode</span>
-             <button class="btn" onClick={handleLogin}>Sign in with Google</button>
+             <button class="btn" onClick={handleLogin} disabled={signingIn()}>
+               {signingIn() ? 'Signing in...' : 'Sign in with Google'}
+             </button>
              {loginError() && <div style="color: var(--danger); margin-top: 8px; font-size: 14px;">{loginError()}</div>}
           </Show>
           <Show when={!isGuest()}>
