@@ -128,6 +128,51 @@ test.describe('Public Upload UI', () => {
     await expect(page.locator('text=QUEUED')).toBeVisible();
     expect(jobCreated).toBeTruthy();
   });
+
+  test('should handle full page drag and drop upload', async ({ page }) => {
+    let jobCreated = false;
+    await page.route('**/jobs', async (route) => {
+      if (route.request().method() === 'POST') {
+        jobCreated = true;
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            id: 'job-123',
+            receipt: 'receipt-abc',
+            status: 'queued',
+            original_filename: 'dragged.pdf'
+          }),
+        });
+      }
+      route.fallback();
+    });
+
+    await page.goto('/');
+    await page.fill('input[placeholder="sk-..."]', 'my-secret-key');
+
+    // Wait for Turnstile token to be ready
+    await expect(page.getByTestId('turnstile-ready')).toBeAttached();
+
+    // Simulate dragenter and drop entirely within evaluate to avoid DataTransfer serialization issues
+    await page.evaluate(() => {
+      const dt = new DataTransfer();
+      const file = new File(['%PDF-1.4\\n% dummy pdf\\n%%EOF\\n'], 'dragged.pdf', { type: 'application/pdf' });
+      dt.items.add(file);
+
+      const dragEnterEvent = new DragEvent('dragenter', { bubbles: true, cancelable: true });
+      Object.defineProperty(dragEnterEvent, 'dataTransfer', { value: dt });
+      document.dispatchEvent(dragEnterEvent);
+
+      const dropEvent = new DragEvent('drop', { bubbles: true, cancelable: true });
+      Object.defineProperty(dropEvent, 'dataTransfer', { value: dt });
+      document.dispatchEvent(dropEvent);
+    });
+
+    // Job should be created. Note: The global mock for GET /public/jobs/job-123 returns 'test.pdf', not 'dragged.pdf'
+    await expect(page.locator('text=test.pdf')).toBeVisible();
+    expect(jobCreated).toBeTruthy();
+  });
   
   test('should show guest warning on settings page', async ({ page }) => {
     await page.goto('/settings/llm');
@@ -217,6 +262,34 @@ test.describe('Public Upload UI', () => {
 
     // Save checkbox should be visible for logged in user
     await expect(page.locator('text=Save this API key to my account settings')).toBeVisible();
+  });
+
+  test('should render dashboard while auth initializes', async ({ page }) => {
+    // Set e2e_delay_auth to delay authReady by 2 seconds
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('e2e_delay_auth', '2000');
+    });
+
+    await page.goto('/');
+
+    // Dashboard UI is visible immediately
+    await expect(page.locator('h1', { hasText: 'Dashboard' })).toBeVisible();
+
+    // The header shows 'Checking sign-in...'
+    await expect(page.locator('text=Checking sign-in...')).toBeVisible();
+    
+    // The Upload PDF form should be visible
+    await expect(page.locator('text=Drag and drop or click to select PDF file')).toBeVisible();
+
+    // During this time, the upload dropzone shows Initializing sign-in state...
+    await expect(page.locator('text=Initializing sign-in state...')).toBeVisible();
+
+    // We wait for auth to finish (delay is 2s, should finish shortly)
+    await expect(page.locator('span', { hasText: 'Guest mode' })).toBeVisible({ timeout: 5000 });
+    
+    // Now the messages should be gone
+    await expect(page.locator('text=Checking sign-in...')).toBeHidden();
+    await expect(page.locator('text=Initializing sign-in state...')).toBeHidden();
   });
 
   test('should prompt to save API key if entered in guest mode before login and no existing key', async ({ page }) => {

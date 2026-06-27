@@ -1,6 +1,6 @@
-import { createSignal, onMount, createEffect, Show } from 'solid-js';
+import { createSignal, onMount, onCleanup, createEffect, Show } from 'solid-js';
 import { uploadJob, getLlmSettings, updateLlmSettings } from '../api';
-import { currentUser } from '../authState';
+import { currentUser, authReady } from '../authState';
 
 export default function UploadForm() {
   const [loading, setLoading] = createSignal(false);
@@ -13,7 +13,11 @@ export default function UploadForm() {
   const [promptLoading, setPromptLoading] = createSignal(false);
   const [promptDismissed, setPromptDismissed] = createSignal(false);
   
-  const isGuest = () => !currentUser();
+  const [isDragging, setIsDragging] = createSignal(false);
+  let dragCounter = 0;
+
+  const isGuest = () => authReady() && !currentUser();
+  const isLoggedIn = () => authReady() && !!currentUser();
 
   onMount(() => {
     // We can't definitively check isGuest() here because auth may still be initializing,
@@ -34,6 +38,57 @@ export default function UploadForm() {
     
     // Slight delay to ensure DOM is ready
     setTimeout(renderTurnstile, 500);
+
+    // Global Drag & Drop handlers
+    const handleDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter++;
+      if (e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
+        setIsDragging(true);
+      }
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (!isDragging()) {
+        setIsDragging(true);
+      }
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter === 0) {
+        setIsDragging(false);
+      }
+    };
+
+    const handleDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter = 0;
+      setIsDragging(false);
+      
+      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        if (file.type !== 'application/pdf') {
+          setError("Please upload a PDF file.");
+          return;
+        }
+        await processFiles(e.dataTransfer.files);
+      }
+    };
+
+    document.addEventListener('dragenter', handleDragEnter);
+    document.addEventListener('dragover', handleDragOver);
+    document.addEventListener('dragleave', handleDragLeave);
+    document.addEventListener('drop', handleDrop);
+
+    onCleanup(() => {
+      document.removeEventListener('dragenter', handleDragEnter);
+      document.removeEventListener('dragover', handleDragOver);
+      document.removeEventListener('dragleave', handleDragLeave);
+      document.removeEventListener('drop', handleDrop);
+    });
   });
 
   createEffect(() => {
@@ -67,13 +122,16 @@ export default function UploadForm() {
     setPromptDismissed(true);
   };
 
-  const handleFileChange = async (e: Event) => {
-    const input = e.target as HTMLInputElement;
-    if (!input.files || input.files.length === 0) return;
+  const processFiles = async (files: FileList) => {
+    if (files.length === 0) return;
     
+    if (!authReady()) {
+      setError("Initializing sign-in state... Please try again in a moment.");
+      return;
+    }
+
     if (isGuest() && !turnstileToken()) {
       setError("Please complete the Turnstile challenge first.");
-      input.value = '';
       return;
     }
     
@@ -82,7 +140,6 @@ export default function UploadForm() {
         "Ollama APIキーなしで続行しますか？\n\nAPIキーなしでもお試し変換できますが、無料/共有のfallbackを使うため、混雑時や制限到達時に失敗することがあります。\n処理速度や成功率は保証されません。\n\n安定して使うには、OllamaのAPIキーを発行して入力してください。\n入力したAPIキーは今回の変換ジョブにのみ使用され、保存・再表示されません。"
       );
       if (!confirmProceed) {
-        input.value = '';
         return;
       }
     }
@@ -98,8 +155,8 @@ export default function UploadForm() {
     }
     
     try {
-      for (let i = 0; i < input.files.length; i++) {
-        await uploadJob(input.files[i], turnstileToken(), apiKey(), clientId, saveApiKeyToSettings());
+      for (let i = 0; i < files.length; i++) {
+        await uploadJob(files[i], turnstileToken(), apiKey(), clientId, saveApiKeyToSettings());
       }
       window.location.reload();
     } catch (err: any) {
@@ -116,14 +173,48 @@ export default function UploadForm() {
       }
     } finally {
       setLoading(false);
-      input.value = '';
     }
   };
 
+  const handleFileChange = async (e: Event) => {
+    const input = e.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+    await processFiles(input.files);
+    input.value = '';
+  };
+
   return (
-    <div class="panel" style="text-align: left; padding: 32px; position: relative; margin-bottom: 24px;">
-      <h3 style="margin-top: 0;">Upload PDF</h3>
-      {error() && <div style="color: var(--danger); margin-bottom: 16px; white-space: pre-wrap;">{error()}</div>}
+    <>
+      <Show when={isDragging()}>
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(0,0,0,0.7)',
+          "z-index": 9999,
+          display: 'flex',
+          "align-items": 'center',
+          "justify-content": 'center',
+          "backdrop-filter": 'blur(4px)'
+        }}>
+          <div style={{
+            padding: '48px',
+            border: '4px dashed var(--accent)',
+            "border-radius": '16px',
+            background: 'var(--bg-color)',
+            "text-align": 'center',
+            "box-shadow": '0 20px 25px -5px rgba(0, 0, 0, 0.5)'
+          }}>
+            <h2 style={{ margin: 0, color: 'var(--accent)', "font-size": '2rem' }}>Drop PDF anywhere to upload</h2>
+          </div>
+        </div>
+      </Show>
+
+      <div class="panel" style="text-align: left; padding: 32px; position: relative; margin-bottom: 24px;">
+        <h3 style="margin-top: 0;">Upload PDF</h3>
+        {error() && <div style="color: var(--danger); margin-bottom: 16px; white-space: pre-wrap;">{error()}</div>}
       
       <Show when={isGuest()}>
         <div style="background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--accent); padding: 12px; margin-bottom: 20px; font-size: 14px;">
@@ -156,7 +247,7 @@ export default function UploadForm() {
             このAPI keyは今回の変換ジョブにのみ使用され、ログインしていないため保存されません。<br/>
             Googleログインすると、アカウント設定に保存できます。
           </Show>
-          <Show when={!isGuest()}>
+          <Show when={isLoggedIn()}>
             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 8px;">
               <input 
                 type="checkbox" 
@@ -221,16 +312,21 @@ export default function UploadForm() {
         </div>
       ) : (
         <div style="text-align: center; padding: 40px; border: 2px dashed var(--border); position: relative; cursor: pointer;">
+          <Show when={!authReady()}>
+            <p style="color: var(--accent); margin-bottom: 8px; font-weight: bold;">Initializing sign-in state...</p>
+          </Show>
           <p style="color: var(--text-muted); pointer-events: none;">Drag and drop or click to select PDF file</p>
           <input 
             data-testid="pdf-file-input"
             type="file" 
             accept="application/pdf"
             onChange={handleFileChange} 
+            disabled={!authReady()}
             style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;"
           />
         </div>
       )}
     </div>
+    </>
   );
 }
