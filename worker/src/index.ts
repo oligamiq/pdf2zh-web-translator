@@ -45,7 +45,7 @@ async function encryptApiKey(apiKey: string, secretB64: string, aadStr: string) 
     key,
     encodeStr(apiKey)
   );
-  return { ciphertext: toBase64(ciphertext), iv: toBase64(iv), keyVersion: 'v1' };
+  return { ciphertext: toBase64(ciphertext), iv: toBase64(iv.buffer), keyVersion: 'v1' };
 }
 
 async function decryptApiKey(ciphertextB64: string, ivB64: string, secretB64: string, aadStr: string) {
@@ -106,6 +106,24 @@ async function checkRateLimit(db: D1Database, key: string, limit: number, window
   const record = await db.prepare(`SELECT count FROM public_rate_limits WHERE key = ?`).bind(key).first();
   if (!record) return false;
   return (record.count as number) <= limit;
+}
+
+
+async function ensureUserProviders(env: Env, uid: string) {
+  const { results } = await env.DB.prepare(`SELECT * FROM user_api_providers WHERE user_id = ? ORDER BY priority ASC, created_at ASC`).bind(uid).all();
+  if (results.length > 0) return results;
+
+  const oldSettings = await env.DB.prepare(`SELECT llm_source, llm_base_url, llm_model, encrypted_api_key, api_key_iv, api_key_key_version FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
+  if (oldSettings && oldSettings.encrypted_api_key && oldSettings.llm_source) {
+    const newId = crypto.randomUUID();
+    await env.DB.prepare(`
+      INSERT INTO user_api_providers (id, user_id, display_name, provider_type, base_url, model, encrypted_api_key, api_key_iv, api_key_key_version, priority, enabled)
+      VALUES (?, ?, 'Ollama', ?, ?, ?, ?, ?, ?, 1, 1)
+    `).bind(newId, uid, oldSettings.llm_source, oldSettings.llm_base_url, oldSettings.llm_model, oldSettings.encrypted_api_key, oldSettings.api_key_iv, oldSettings.api_key_key_version || 'v1').run();
+    const res2 = await env.DB.prepare(`SELECT * FROM user_api_providers WHERE user_id = ? ORDER BY priority ASC, created_at ASC`).bind(uid).all();
+    return res2.results;
+  }
+  return [];
 }
 
 async function fetchPrivateApi(
@@ -220,7 +238,127 @@ const authMiddleware = async (c: any, next: any) => {
 // apply auth middleware explicitly for GET /jobs routes later
 app.use('/settings/*', authMiddleware)
 
+
+app.get('/settings/api/basic', async (c) => {
+  return c.json({});
+});
+
+app.put('/settings/api/basic', async (c) => {
+  return c.json({ success: true });
+});
+
+app.get('/settings/api/providers', async (c) => {
+  const uid = c.get('uid') as string;
+  const providers = (await ensureUserProviders(c.env, uid)) as any[];
+  return c.json(providers.map((p: any) => ({
+    id: p.id,
+    display_name: p.display_name,
+    provider_type: p.provider_type,
+    base_url: p.base_url,
+    model: p.model,
+    priority: p.priority,
+    enabled: p.enabled,
+    created_at: p.created_at
+  })));
+});
+
+app.post('/settings/api/providers', async (c) => {
+  const uid = c.get('uid') as string;
+  const body = await c.req.json();
+  const { display_name, provider_type, base_url, model, api_key, enabled } = body;
+  
+  let newEncryptedKey = null;
+  let newIv = null;
+  let newKeyVersion = 'v1';
+  
+  if (api_key) {
+    if (!c.env.USER_SETTINGS_SECRET) return c.json({ error: 'server_configuration_error', message: 'Missing secret' }, 500);
+    const enc = await encryptApiKey(api_key, c.env.USER_SETTINGS_SECRET, `user_api_provider:${uid}`);
+    newEncryptedKey = enc.ciphertext;
+    newIv = enc.iv;
+    newKeyVersion = enc.keyVersion;
+  }
+  
+  const existingCount = (await c.env.DB.prepare(`SELECT COUNT(*) as c FROM user_api_providers WHERE user_id = ?`).bind(uid).first())?.c as number || 0;
+  
+  const id = crypto.randomUUID();
+  await c.env.DB.prepare(`
+    INSERT INTO user_api_providers (id, user_id, display_name, provider_type, base_url, model, encrypted_api_key, api_key_iv, api_key_key_version, priority, enabled)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(id, uid, display_name || 'New Provider', provider_type, base_url || '', model || '', newEncryptedKey, newIv, newKeyVersion, existingCount + 1, enabled ?? 1).run();
+  
+  return c.json({ id });
+});
+
+app.put('/settings/api/providers/:id', async (c) => {
+  const uid = c.get('uid') as string;
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  const { display_name, provider_type, base_url, model, api_key, clear_api_key, enabled } = body;
+  
+  const existing = await c.env.DB.prepare(`SELECT * FROM user_api_providers WHERE id = ? AND user_id = ?`).bind(id, uid).first();
+  if (!existing) return c.json({ error: 'not_found' }, 404);
+  
+  let newEncryptedKey = existing.encrypted_api_key as string | null;
+  let newIv = existing.api_key_iv as string | null;
+  let newKeyVersion = existing.api_key_key_version as string;
+  
+  if (clear_api_key) {
+    newEncryptedKey = null;
+    newIv = null;
+  } else if (api_key && api_key !== "") {
+    if (!c.env.USER_SETTINGS_SECRET) return c.json({ error: 'server_configuration_error' }, 500);
+    const enc = await encryptApiKey(api_key, c.env.USER_SETTINGS_SECRET, `user_api_provider:${uid}`);
+    newEncryptedKey = enc.ciphertext;
+    newIv = enc.iv;
+    newKeyVersion = enc.keyVersion;
+  }
+  
+  await c.env.DB.prepare(`
+    UPDATE user_api_providers SET
+      display_name = coalesce(?, display_name),
+      provider_type = coalesce(?, provider_type),
+      base_url = coalesce(?, base_url),
+      model = coalesce(?, model),
+      encrypted_api_key = ?,
+      api_key_iv = ?,
+      api_key_key_version = coalesce(?, api_key_key_version),
+      enabled = coalesce(?, enabled),
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND user_id = ?
+  `).bind(display_name, provider_type, base_url, model, newEncryptedKey, newIv, newKeyVersion, enabled, id, uid).run();
+  
+  return c.json({ success: true });
+});
+
+app.delete('/settings/api/providers/:id', async (c) => {
+  const uid = c.get('uid') as string;
+  const id = c.req.param('id');
+  await c.env.DB.prepare(`DELETE FROM user_api_providers WHERE id = ? AND user_id = ?`).bind(id, uid).run();
+  return c.json({ success: true });
+});
+
+app.post('/settings/api/providers/:id/test', async (c) => {
+  return c.json({ ok: true });
+});
+
+app.post('/settings/api/providers/reorder', async (c) => {
+  const uid = c.get('uid') as string;
+  const body = await c.req.json();
+  const { provider_ids } = body;
+  if (!Array.isArray(provider_ids)) return c.json({ error: 'invalid_format' }, 400);
+  
+  const stmts = provider_ids.map((id, index) => 
+    c.env.DB.prepare(`UPDATE user_api_providers SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`).bind(index + 1, id, uid)
+  );
+  if (stmts.length > 0) {
+    await c.env.DB.batch(stmts);
+  }
+  return c.json({ success: true });
+});
+
 // --- User Settings APIs (Public) ---
+
 
 app.get('/settings/llm', async (c) => {
   const uid = c.get('uid') as string;
@@ -318,7 +456,7 @@ app.post('/jobs', async (c) => {
 
     const id = crypto.randomUUID()
     const formData = await c.req.formData()
-    const file = formData.get('pdf') as File
+    const file = formData.get('pdf') as unknown as File
     if (!file) return c.json({ error: 'No pdf file' }, 400)
 
     let receipt = '';
@@ -370,71 +508,109 @@ app.post('/jobs', async (c) => {
       publicExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
     }
 
-    let settings = null;
-    if (ownerType === 'firebase') {
-      settings = await c.env.DB.prepare(`SELECT user_id, llm_source, llm_base_url, llm_model, encrypted_api_key, api_key_iv FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
-    }
+    
+    let providersToSnapshot: any[] = [];
 
     if (apiKey) {
       llm_credential_mode = 'request_once';
-      llm_source = settings?.llm_source as string || 'openaicompatible';
-      llm_base_url = settings?.llm_base_url as string || '';
-      llm_model = settings?.llm_model as string || '';
-
+      // User provided a one-off API key
+      const tempId = crypto.randomUUID();
+      let encKey = null;
+      let iv = null;
+      let keyVersion = 'v1';
       if (c.env.USER_SETTINGS_SECRET) {
         try {
-          const enc = await encryptApiKey(apiKey, c.env.USER_SETTINGS_SECRET, `job_llm_snapshot:${id}`);
-          encrypted_api_key_snapshot = enc.ciphertext;
-          api_key_snapshot_iv = enc.iv;
-          api_key_key_version = enc.keyVersion;
+          const enc = await encryptApiKey(apiKey, c.env.USER_SETTINGS_SECRET, `user_api_provider:${uid || 'public_user'}`);
+          encKey = enc.ciphertext;
+          iv = enc.iv;
+          keyVersion = enc.keyVersion;
         } catch (e) {
           return c.json({ error: 'internal_error', message: 'Failed to encrypt API key' }, 500);
         }
       }
+      
+      // Get llm_source, model from somewhere, default to openaicompatible
+      let source = 'openaicompatible';
+      let baseUrl = '';
+      let model = '';
+      if (ownerType === 'firebase' && uid) {
+          const existing = (await ensureUserProviders(c.env, uid)) as any[];
+          if (existing.length > 0) {
+              source = existing[0].provider_type;
+              baseUrl = existing[0].base_url;
+              model = existing[0].model;
+          }
+      }
+      
+      providersToSnapshot.push({
+        display_name: 'Custom',
+        provider_type: source,
+        base_url: baseUrl,
+        model: model,
+        encrypted_api_key: encKey,
+        api_key_iv: iv,
+        api_key_key_version: keyVersion,
+        priority: 1
+      });
 
       if (ownerType === 'firebase' && saveApiKey && c.env.USER_SETTINGS_SECRET) {
         try {
-          const encUser = await encryptApiKey(apiKey, c.env.USER_SETTINGS_SECRET, `user_llm_settings:${uid}`);
+          const existingCount = (await c.env.DB.prepare(`SELECT COUNT(*) as c FROM user_api_providers WHERE user_id = ?`).bind(uid).first())?.c as number || 0;
           await c.env.DB.prepare(`
-            INSERT INTO user_llm_settings (user_id, llm_source, llm_base_url, llm_model, encrypted_api_key, api_key_iv, api_key_key_version, updated_at)
-            VALUES (?, 'openaicompatible', '', '', ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(user_id) DO UPDATE SET
-              encrypted_api_key = excluded.encrypted_api_key,
-              api_key_iv = excluded.api_key_iv,
-              api_key_key_version = excluded.api_key_key_version,
-              updated_at = CURRENT_TIMESTAMP
-          `).bind(uid, encUser.ciphertext, encUser.iv, encUser.keyVersion).run();
+            INSERT INTO user_api_providers (id, user_id, display_name, provider_type, base_url, model, encrypted_api_key, api_key_iv, api_key_key_version, priority, enabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(crypto.randomUUID(), uid, 'Saved Provider', source, baseUrl, model, encKey, iv, keyVersion, existingCount + 1, 1).run();
         } catch (e) {
           console.error("Failed to save api key to settings", e);
         }
       }
     } else {
-      if (ownerType === 'firebase' && settings?.encrypted_api_key && settings?.api_key_iv) {
+      if (ownerType === 'firebase' && uid) {
         llm_credential_mode = 'user_settings';
-        llm_source = settings.llm_source as string || 'openaicompatible';
-        llm_base_url = settings.llm_base_url as string || '';
-        llm_model = settings.llm_model as string || '';
-
-        if (c.env.USER_SETTINGS_SECRET) {
-          try {
-            const plainKey = await decryptApiKey(
-              settings.encrypted_api_key as string,
-              settings.api_key_iv as string,
-              c.env.USER_SETTINGS_SECRET,
-              `user_llm_settings:${uid}`
-            );
-            const reEncrypted = await encryptApiKey(
-              plainKey,
-              c.env.USER_SETTINGS_SECRET,
-              `job_llm_snapshot:${id}`
-            );
-            encrypted_api_key_snapshot = reEncrypted.ciphertext;
-            api_key_snapshot_iv = reEncrypted.iv;
-            api_key_key_version = reEncrypted.keyVersion;
-          } catch (e) {
-            console.error("Failed to re-encrypt api key for snapshot", e);
-            return c.json({ error: 'internal_error', message: 'Failed to snapshot settings' }, 500);
-          }
+        const providers = await ensureUserProviders(c.env, uid);
+        const enabledProviders = providers.filter((p: any) => p.enabled === 1);
+        if (enabledProviders.length === 0) {
+          return c.json({ error: 'api_key_required', message: 'Ollama API key is required. Please set it in Settings.' }, 400);
+        }
+        
+        // Re-encrypt api keys for job snapshot
+        for (const p of enabledProviders as any[]) {
+            let encKey = p.encrypted_api_key;
+            let iv = p.api_key_iv;
+            let keyVersion = p.api_key_key_version;
+            
+            if (p.encrypted_api_key && p.api_key_iv && c.env.USER_SETTINGS_SECRET) {
+                try {
+                  const plainKey = await decryptApiKey(
+                    p.encrypted_api_key,
+                    p.api_key_iv,
+                    c.env.USER_SETTINGS_SECRET,
+                    `user_api_provider:${uid}`
+                  );
+                  const reEncrypted = await encryptApiKey(
+                    plainKey,
+                    c.env.USER_SETTINGS_SECRET,
+                    `job_api_provider:${id}`
+                  );
+                  encKey = reEncrypted.ciphertext;
+                  iv = reEncrypted.iv;
+                  keyVersion = reEncrypted.keyVersion;
+                } catch (e) {
+                  console.error("Failed to re-encrypt api key for snapshot", e);
+                  return c.json({ error: 'internal_error', message: 'Failed to snapshot settings' }, 500);
+                }
+            }
+            
+            providersToSnapshot.push({
+                display_name: p.display_name,
+                provider_type: p.provider_type,
+                base_url: p.base_url,
+                model: p.model,
+                encrypted_api_key: encKey,
+                api_key_iv: iv,
+                api_key_key_version: keyVersion,
+                priority: p.priority
+            });
         }
       } else {
         if (c.env.PUBLIC_FALLBACK_LLM_ENABLED !== 'true') {
@@ -451,20 +627,42 @@ app.post('/jobs', async (c) => {
         }
 
         llm_credential_mode = 'free_fallback';
-        llm_source = source;
-        llm_base_url = baseUrl;
-        llm_model = model;
+        let encKey = null;
+        let iv = null;
+        let keyVersion = 'v1';
+        
         if (fallbackKey && c.env.USER_SETTINGS_SECRET) {
           try {
-            const enc = await encryptApiKey(fallbackKey, c.env.USER_SETTINGS_SECRET, `job_llm_snapshot:${id}`);
-            encrypted_api_key_snapshot = enc.ciphertext;
-            api_key_snapshot_iv = enc.iv;
-            api_key_key_version = enc.keyVersion;
+            const enc = await encryptApiKey(fallbackKey, c.env.USER_SETTINGS_SECRET, `job_api_provider:${id}`);
+            encKey = enc.ciphertext;
+            iv = enc.iv;
+            keyVersion = enc.keyVersion;
           } catch (e) {
             return c.json({ error: 'internal_error', message: 'Failed to encrypt fallback API key' }, 500);
           }
         }
+        
+        providersToSnapshot.push({
+            display_name: 'Public Fallback',
+            provider_type: source,
+            base_url: baseUrl,
+            model: model,
+            encrypted_api_key: encKey,
+            api_key_iv: iv,
+            api_key_key_version: keyVersion,
+            priority: 1
+        });
       }
+    }
+    
+    if (providersToSnapshot.length > 0) {
+        const first = providersToSnapshot[0];
+        llm_source = first.provider_type;
+        llm_base_url = first.base_url;
+        llm_model = first.model;
+        encrypted_api_key_snapshot = first.encrypted_api_key;
+        api_key_snapshot_iv = first.api_key_iv;
+        api_key_key_version = first.api_key_key_version;
     }
 
     // 1. Insert to D1
@@ -483,7 +681,19 @@ app.post('/jobs', async (c) => {
       ownerType, publicReceiptHash, publicClientHash, publicIpHash,
       publicExpiresAt, fileSizeBytes, turnstileVerified, llm_credential_mode
     ).run()
+    
+    // Insert into job_api_provider_snapshots
+    if (providersToSnapshot.length > 0) {
+        const stmts = providersToSnapshot.map(p => 
+            c.env.DB.prepare(`
+                INSERT INTO job_api_provider_snapshots (id, job_id, display_name, provider_type, base_url, model, encrypted_api_key, api_key_iv, api_key_key_version, priority)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).bind(crypto.randomUUID(), id, p.display_name, p.provider_type, p.base_url, p.model, p.encrypted_api_key, p.api_key_iv, p.api_key_key_version, p.priority)
+        );
+        await c.env.DB.batch(stmts);
+    }
     console.log("POST /jobs: created job", id, "owner_type:", ownerType)
+
 
     // 2. Stream to PC Private API
     console.log("POST /jobs: forwarding input to private API", `/internal/files/${id}/input`)
@@ -556,7 +766,7 @@ app.get('/jobs/:id/download', authMiddleware, async (c) => {
   const id = c.req.param('id')
   const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
-  if (job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
+  if (job.status !== 'completed' && job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
 
   if (job.download_expires_at) {
     const expiresAt = new Date(job.download_expires_at as string).getTime();
@@ -567,7 +777,7 @@ app.get('/jobs/:id/download', authMiddleware, async (c) => {
 
   const resp = await fetchPrivateApi(c.env, `/internal/jobs/${id}/download`)
   if (!resp.ok) {
-    return c.json({ error: 'Private API error' }, resp.status)
+    return c.json({ error: 'Private API error' }, resp.status as any)
   }
   return new Response(resp.body, {
     status: resp.status,
@@ -615,7 +825,7 @@ app.get('/public/jobs/:id/download', async (c) => {
   const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
   const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
-  if (job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
+  if (job.status !== 'completed' && job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
 
   if (job.download_expires_at) {
     const expiresAt = new Date(job.download_expires_at as string).getTime();
@@ -626,7 +836,7 @@ app.get('/public/jobs/:id/download', async (c) => {
 
   const resp = await fetchPrivateApi(c.env, `/internal/jobs/${id}/download`)
   if (!resp.ok) {
-    return c.json({ error: 'Private API error' }, resp.status)
+    return c.json({ error: 'Private API error' }, resp.status as any)
   }
   return new Response(resp.body, {
     status: resp.status,
@@ -695,21 +905,41 @@ app.post('/agent/jobs/:id/progress', async (c) => {
   const body = await c.req.json()
   const now = new Date().toISOString()
   
-  const status = body.status || 'running';
-  const percent = body.progress_percent || 0;
+  let status = body.status || 'running';
+  if (status === 'succeeded') status = 'completed';
+
   const phase = body.progress_phase || '';
   const message = body.progress_message || '';
   const errorMsg = body.error_message || null;
   const logTail = body.log_tail || null;
 
+  const existing = await c.env.DB.prepare(`SELECT progress_percent FROM jobs WHERE id = ?`).bind(id).first();
+  if (!existing) return c.json({ error: 'Not found' }, 404);
+
+  const oldPercent = (existing.progress_percent as number) ?? 0;
+  let newPercent = body.progress_percent ?? oldPercent;
+  
+  newPercent = Math.max(0, Math.min(100, Math.round(newPercent)));
+
+  if (status === 'completed') {
+    newPercent = 100;
+  } else if (status === 'running') {
+    newPercent = Math.max(oldPercent, newPercent);
+  }
+
   if (status === 'failed') {
     await c.env.DB.prepare(
       `UPDATE jobs SET status = 'failed', finished_at = ?, progress_percent = ?, progress_phase = ?, error_message = ?, log_tail = ? WHERE id = ? AND status = 'running'`
-    ).bind(now, percent, phase, errorMsg, logTail, id).run()
+    ).bind(now, newPercent, phase, errorMsg, logTail, id).run()
+  } else if (status === 'completed') {
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    await c.env.DB.prepare(
+      `UPDATE jobs SET status = 'completed', finished_at = ?, download_expires_at = ?, progress_percent = ?, progress_phase = ?, progress_message = ?, log_tail = ? WHERE id = ? AND status = 'running'`
+    ).bind(now, expiresAt.toISOString(), newPercent, phase, message, logTail, id).run()
   } else {
     await c.env.DB.prepare(
       `UPDATE jobs SET status = 'running', progress_percent = ?, progress_phase = ?, progress_message = ?, log_tail = ? WHERE id = ? AND status = 'running'`
-    ).bind(percent, phase, message, logTail, id).run()
+    ).bind(newPercent, phase, message, logTail, id).run()
   }
   return c.json({ ok: true })
 })
@@ -720,7 +950,7 @@ app.post('/agent/jobs/:id/succeeded', async (c) => {
   const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
   
   await c.env.DB.prepare(
-    `UPDATE jobs SET status = 'succeeded', finished_at = ?, download_expires_at = ? WHERE id = ? AND status = 'running'`
+    `UPDATE jobs SET status = 'completed', finished_at = ?, download_expires_at = ?, progress_percent = 100, progress_phase = 'completed' WHERE id = ? AND status = 'running'`
   ).bind(now.toISOString(), expiresAt.toISOString(), id).run()
   return c.json({ ok: true })
 })
