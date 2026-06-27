@@ -1157,10 +1157,26 @@ app.post('/agent/jobs/:id/attempts', async (c) => {
   const body = await c.req.json()
   const { provider_snapshot_id, provider_order, display_name, model, status, http_status, error_message, started_at, finished_at } = body;
   
-  await c.env.DB.prepare(`
-    INSERT INTO job_api_provider_attempts (id, job_id, snapshot_id, provider_order, display_name, model, status, http_status, error_message, started_at, finished_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, coalesce(?, CURRENT_TIMESTAMP), ?)
-  `).bind(crypto.randomUUID(), id, provider_snapshot_id || '', provider_order || 1, display_name || '', model || '', status || 'running', http_status || null, error_message || null, started_at || null, finished_at || null).run();
+  const snap_id = provider_snapshot_id || '';
+  const existing = await c.env.DB.prepare(`SELECT id FROM job_api_provider_attempts WHERE job_id = ? AND snapshot_id = ?`).bind(id, snap_id).first();
+  
+  let final_finished_at = finished_at || null;
+  if (!final_finished_at && (status === 'completed' || status === 'failed')) {
+    final_finished_at = new Date().toISOString();
+  }
+  
+  if (existing) {
+    await c.env.DB.prepare(`
+      UPDATE job_api_provider_attempts 
+      SET status = ?, http_status = ?, error_message = ?, finished_at = coalesce(?, finished_at)
+      WHERE id = ?
+    `).bind(status || 'running', http_status || null, error_message || null, final_finished_at, existing.id).run();
+  } else {
+    await c.env.DB.prepare(`
+      INSERT INTO job_api_provider_attempts (id, job_id, snapshot_id, provider_order, display_name, model, status, http_status, error_message, started_at, finished_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, coalesce(?, CURRENT_TIMESTAMP), ?)
+    `).bind(crypto.randomUUID(), id, snap_id, provider_order || 1, display_name || '', model || '', status || 'running', http_status || null, error_message || null, started_at || null, final_finished_at).run();
+  }
   
   return c.json({ ok: true })
 })

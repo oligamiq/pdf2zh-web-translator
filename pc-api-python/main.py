@@ -305,11 +305,13 @@ async def agent_loop():
                     
                     job_success = False
                     final_error_str = "All providers failed."
+                    final_display_name = None
                     
                     for idx, provider in enumerate(provider_snapshots):
                         provider_id = provider.get("id")
                         provider_order = idx + 1
                         display_name = provider.get("display_name", f"Provider {provider_order}")
+                        final_display_name = display_name
                         
                         await report_progress(10, "preparing", f"Preparing with {display_name}", active_provider_name=display_name)
                         await report_attempt(provider_id, provider_order, display_name, provider.get("model"), "running")
@@ -451,7 +453,8 @@ async def agent_loop():
                             percent=100,
                             phase="completed",
                             message="Conversion completed",
-                            status="completed"
+                            status="completed",
+                            active_provider_name=final_display_name
                         )
                     else:
                         await report_progress(
@@ -459,7 +462,8 @@ async def agent_loop():
                             phase="failed",
                             message="Conversion failed",
                             status="failed",
-                            error_msg=final_error_str
+                            error_msg=final_error_str,
+                            active_provider_name=final_display_name
                         )
                 except Exception as e:
                     import traceback
