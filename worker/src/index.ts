@@ -691,15 +691,32 @@ app.post('/jobs', async (c) => {
       llm_credential_mode = 'request_once';
       // User provided a one-off API key
       const tempId = crypto.randomUUID();
-      let encKey = null;
-      let iv = null;
-      let keyVersion = 'v1';
+      let snapshotEncKey = null;
+      let snapshotIv = null;
+      let snapshotKeyVersion = 'v1';
+      let savedEncKey = null;
+      let savedIv = null;
+      let savedKeyVersion = 'v1';
+      let legacyEncKey = null;
+      let legacyIv = null;
+      let legacyKeyVersion = 'v1';
+
       if (c.env.USER_SETTINGS_SECRET) {
         try {
-          const enc = await encryptApiKey(apiKey, c.env.USER_SETTINGS_SECRET, `user_api_provider:${uid || 'public_user'}`);
-          encKey = enc.ciphertext;
-          iv = enc.iv;
-          keyVersion = enc.keyVersion;
+          const snapshotEnc = await encryptApiKey(apiKey, c.env.USER_SETTINGS_SECRET, `job_api_provider:${id}`);
+          snapshotEncKey = snapshotEnc.ciphertext;
+          snapshotIv = snapshotEnc.iv;
+          snapshotKeyVersion = snapshotEnc.keyVersion;
+
+          const savedEnc = await encryptApiKey(apiKey, c.env.USER_SETTINGS_SECRET, `user_api_provider:${uid || 'public_user'}`);
+          savedEncKey = savedEnc.ciphertext;
+          savedIv = savedEnc.iv;
+          savedKeyVersion = savedEnc.keyVersion;
+
+          const legacyEnc = await encryptApiKey(apiKey, c.env.USER_SETTINGS_SECRET, `job_llm_snapshot:${id}`);
+          legacyEncKey = legacyEnc.ciphertext;
+          legacyIv = legacyEnc.iv;
+          legacyKeyVersion = legacyEnc.keyVersion;
         } catch (e) {
           return c.json({ error: 'internal_error', message: 'Failed to encrypt API key' }, 500);
         }
@@ -723,9 +740,12 @@ app.post('/jobs', async (c) => {
         provider_type: source,
         base_url: baseUrl,
         model: model,
-        encrypted_api_key: encKey,
-        api_key_iv: iv,
-        api_key_key_version: keyVersion,
+        encrypted_api_key: snapshotEncKey,
+        api_key_iv: snapshotIv,
+        api_key_key_version: snapshotKeyVersion,
+        legacy_encrypted_api_key: legacyEncKey,
+        legacy_api_key_iv: legacyIv,
+        legacy_api_key_key_version: legacyKeyVersion,
         priority: 1
       });
 
@@ -735,7 +755,7 @@ app.post('/jobs', async (c) => {
           await c.env.DB.prepare(`
             INSERT INTO user_api_providers (id, user_id, display_name, provider_type, base_url, model, encrypted_api_key, api_key_iv, api_key_key_version, priority, enabled)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).bind(crypto.randomUUID(), uid, 'Saved Provider', source, baseUrl, model, encKey, iv, keyVersion, existingCount + 1, 1).run();
+          `).bind(crypto.randomUUID(), uid, 'Saved Provider', source, baseUrl, model, savedEncKey, savedIv, savedKeyVersion, existingCount + 1, 1).run();
         } catch (e) {
           console.error("Failed to save api key to settings", e);
         }
@@ -754,6 +774,9 @@ app.post('/jobs', async (c) => {
             let encKey = p.encrypted_api_key;
             let iv = p.api_key_iv;
             let keyVersion = p.api_key_key_version;
+            let legacyEncKey = p.encrypted_api_key;
+            let legacyIv = p.api_key_iv;
+            let legacyKeyVersion = p.api_key_key_version;
             
             if (p.encrypted_api_key && p.api_key_iv && c.env.USER_SETTINGS_SECRET) {
                 try {
@@ -771,6 +794,15 @@ app.post('/jobs', async (c) => {
                   encKey = reEncrypted.ciphertext;
                   iv = reEncrypted.iv;
                   keyVersion = reEncrypted.keyVersion;
+
+                  const legacyEncrypted = await encryptApiKey(
+                    plainKey,
+                    c.env.USER_SETTINGS_SECRET,
+                    `job_llm_snapshot:${id}`
+                  );
+                  legacyEncKey = legacyEncrypted.ciphertext;
+                  legacyIv = legacyEncrypted.iv;
+                  legacyKeyVersion = legacyEncrypted.keyVersion;
                 } catch (e) {
                   console.error("Failed to re-encrypt api key for snapshot", e);
                   return c.json({ error: 'internal_error', message: 'Failed to snapshot settings' }, 500);
@@ -785,6 +817,9 @@ app.post('/jobs', async (c) => {
                 encrypted_api_key: encKey,
                 api_key_iv: iv,
                 api_key_key_version: keyVersion,
+                legacy_encrypted_api_key: legacyEncKey,
+                legacy_api_key_iv: legacyIv,
+                legacy_api_key_key_version: legacyKeyVersion,
                 priority: p.priority
             });
         }
@@ -806,6 +841,9 @@ app.post('/jobs', async (c) => {
         let encKey = null;
         let iv = null;
         let keyVersion = 'v1';
+        let legacyEncKey = null;
+        let legacyIv = null;
+        let legacyKeyVersion = 'v1';
         
         if (fallbackKey && c.env.USER_SETTINGS_SECRET) {
           try {
@@ -813,6 +851,11 @@ app.post('/jobs', async (c) => {
             encKey = enc.ciphertext;
             iv = enc.iv;
             keyVersion = enc.keyVersion;
+
+            const legacyEnc = await encryptApiKey(fallbackKey, c.env.USER_SETTINGS_SECRET, `job_llm_snapshot:${id}`);
+            legacyEncKey = legacyEnc.ciphertext;
+            legacyIv = legacyEnc.iv;
+            legacyKeyVersion = legacyEnc.keyVersion;
           } catch (e) {
             return c.json({ error: 'internal_error', message: 'Failed to encrypt fallback API key' }, 500);
           }
@@ -826,6 +869,9 @@ app.post('/jobs', async (c) => {
             encrypted_api_key: encKey,
             api_key_iv: iv,
             api_key_key_version: keyVersion,
+            legacy_encrypted_api_key: legacyEncKey,
+            legacy_api_key_iv: legacyIv,
+            legacy_api_key_key_version: legacyKeyVersion,
             priority: 1
         });
       }
@@ -836,9 +882,9 @@ app.post('/jobs', async (c) => {
         llm_source = first.provider_type;
         llm_base_url = first.base_url;
         llm_model = first.model;
-        encrypted_api_key_snapshot = first.encrypted_api_key;
-        api_key_snapshot_iv = first.api_key_iv;
-        api_key_key_version = first.api_key_key_version;
+        encrypted_api_key_snapshot = first.legacy_encrypted_api_key;
+        api_key_snapshot_iv = first.legacy_api_key_iv;
+        api_key_key_version = first.legacy_api_key_key_version;
     }
 
     // 1. Insert to D1
