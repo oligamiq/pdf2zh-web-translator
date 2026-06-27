@@ -4,7 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "build": "wrangler deploy --dry-run --outdir .tmp/worker-build",
+    "deploy": "npx wrangler deploy",
+    "migrate:remote": "npx wrangler d1 migrations apply pdf2zh-db --remote",
+    "d1:tables": "npx wrangler d1 execute pdf2zh-db --remote --command \"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;\"",
+    "secret:turnstile": "npx wrangler secret put TURNSTILE_SECRET_KEY"
   },
   "dependencies": {
     "hono": "^4.2.0",

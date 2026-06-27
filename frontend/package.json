@@ -8,7 +8,10 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:line": "playwright test --workers=1 --reporter=line --timeout=15000",
+    "deploy": "rm -rf dist && npm run build && npm run test:e2e && npx wrangler pages deploy dist --project-name pdftr --branch main",
+    "check:prod-bundle": "rm -rf dist && npm run build && ! grep -RIn \"e2e_token\\|e2e_user_email\\|VITE_E2E_AUTH_BYPASS\\|e2e_delay_auth\" dist"
   },
   "dependencies": {
     "@solidjs/router": "^0.16.1",

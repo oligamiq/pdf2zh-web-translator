@@ -1,0 +1,29 @@
+{
+  "name": "pdf2zh-web-v2",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "npm@10.5.0",
+  "workspaces": [
+    "frontend",
+    "worker",
+    "pc-api"
+  ],
+  "devDependencies": {
+    "turbo": "^2.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "lint": "turbo run lint",
+    "preflight": "./scripts/preflight-prod.sh",
+    "smoke:public": "./scripts/e2e-public-jobs-smoke.sh",
+    "smoke:prod-vpc": "./scripts/prod-vpc-smoke.sh",
+    "smoke:all": "npm run smoke:public && npm run smoke:prod-vpc",
+    "deploy:worker": "npm --prefix worker run deploy",
+    "deploy:frontend": "npm --prefix frontend run deploy",
+    "deploy": "npm run preflight && npm run deploy:worker && npm run deploy:frontend",
+    "check:prod-bundle": "npm --prefix frontend run check:prod-bundle",
+    "verify": "npm run build && npm run check:prod-bundle && npm run test:e2e && npm run preflight"
+  }
+}

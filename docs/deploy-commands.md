@@ -2,13 +2,15 @@
 
 各コンポーネントをデプロイ、またはマイグレーションするためのコマンド一覧です。
 
-## Preflight Check (デプロイ前確認)
+## Preflight Check (デプロイ前確認) & Deploy
 
-本番環境にデプロイする前に、すべての設定・環境変数・必須ファイルが揃っているか、破壊的操作なしで自動チェックします。
+本番環境にデプロイする前に、すべての設定・環境変数・必須ファイルが揃っているか、破壊的操作なしで自動チェックし、安全にデプロイします。
 
 ```bash
 cd /srv/pdf2zh-web/v2
-./scripts/preflight-prod.sh
+npm install
+npm run verify
+npm run deploy
 ```
 
 ## Cloudflare D1
@@ -21,54 +23,25 @@ npx wrangler d1 create pdf2zh-db
 npx wrangler d1 execute pdf2zh-db --local --file=./schema.sql
 
 # 3. マイグレーション (本番・リモート用)
-npx wrangler d1 execute pdf2zh-db --remote --file=./schema.sql
-npx wrangler d1 execute pdf2zh-db --remote --file=./migrations/0003_add_public_jobs.sql
+cd /srv/pdf2zh-web/v2
+npm --prefix worker run migrate:remote
 ```
 
-## Cloudflare Worker
+## 本番用シークレットの設定 (Worker)
+
+初回構築時やキー変更時のみ実行してください。デプロイフローには含まれません。
 
 ```bash
-# ディレクトリ移動
-cd v2/worker
-
-# ローカル開発 (mockモード推奨)
-npm run dev
-
-# 本番へのデプロイ
-npm run deploy
-
-# 本番用シークレットの設定
+cd /srv/pdf2zh-web/v2
+npm --prefix worker run secret:turnstile
 npx wrangler secret put PROXY_SECRET
 npx wrangler secret put AGENT_TOKEN
 npx wrangler secret put USER_SETTINGS_SECRET
-npx wrangler secret put TURNSTILE_SECRET_KEY
 npx wrangler secret put PUBLIC_RATE_LIMIT_SALT
 npx wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY
 # (Note: APIキーなしの public fallback を有効にするには、wrangler.toml の vars で
 # PUBLIC_FALLBACK_LLM_ENABLED="true" とし、SOURCE, BASE_URL, MODEL も設定する必要があります。
 # 未設定の場合は自動的にフォールバックが無効化され、利用できません)
-```
-
-## Frontend (SolidJS)
-
-```bash
-# ディレクトリ移動
-cd v2/frontend
-
-# ローカル開発
-npm run dev
-
-# 本番用ビルド確認
-npm run build
-```
-
-**Cloudflare Pages Deploy (Wrangler CLI)**:
-```bash
-# プロジェクト作成 (初回のみ)
-npx wrangler pages project create pdftr-frontend --production-branch main
-
-# デプロイ
-npx wrangler pages deploy dist --project-name pdftr-frontend --branch main
 ```
 
 ## PC Docker (Agent & API)

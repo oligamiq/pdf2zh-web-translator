@@ -28,8 +28,8 @@ npx wrangler d1 create pdf2zh-prod
 ## 6. D1 migration remote適用
 `v2/worker/wrangler.toml` に `database_id` をセットしてから実行します。
 ```bash
-npx wrangler d1 execute pdf2zh-db --remote --file=./schema.sql
-npx wrangler d1 execute pdf2zh-db --remote --file=./migrations/0003_add_public_jobs.sql
+cd /srv/pdf2zh-web/v2
+npm --prefix worker run migrate:remote
 ```
 > 期待出力: `3 commands executed successfully.` 等の成功メッセージ。
 
@@ -49,8 +49,8 @@ npx wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY
 `v2/worker/wrangler.toml` の `AUTH_MODE="firebase"` および `FIREBASE_PROJECT_ID` 等が正しく設定されているか確認し、デプロイします。
 また、APIキーなしの Public Fallback を利用する場合は `PUBLIC_FALLBACK_LLM_ENABLED="true"` に設定し、`SOURCE`, `BASE_URL`, `MODEL` を記述してください。
 ```bash
-cd v2/worker
-npm run deploy
+cd /srv/pdf2zh-web/v2
+npm run deploy:worker
 ```
 > 期待出力: デプロイ先のWorker URL（`https://your-worker.workers.dev`）が表示されます。
 
@@ -101,9 +101,10 @@ mkdir -p /mnt/hdd/pdf2zh-web/data/tmp
 全ての実値設定とディレクトリ作成が完了したら、デプロイや起動の前に設定漏れがないか確認します。
 ```bash
 cd /srv/pdf2zh-web/v2
-./scripts/preflight-prod.sh
+npm install
+npm run verify
 ```
-> 期待出力: `=== Production Preflight Passed ===`
+> 期待出力: `=== Production Preflight Passed ===` と E2E の成功メッセージ。
 
 ## 12. Docker compose build / up
 ```bash
@@ -126,24 +127,13 @@ VITE_FIREBASE_MEASUREMENT_ID=(Firebaseから取得)
 VITE_TURNSTILE_SITE_KEY=(Cloudflare Turnstile Site Key)
 ```
 
-## 14. Frontend build
+## 14. Frontend deploy
+`npm run deploy:frontend` または root の `npm run deploy` を用いてビルドとデプロイを行います。
 ```bash
-cd v2/frontend
-npm run build
+cd /srv/pdf2zh-web/v2
+npm run deploy:frontend
 ```
-> 期待出力: `dist` フォルダにコンパイル済みの静的ファイルが出力される。
-
-## 15. Cloudflare Pages deploy
-Wrangler CLI を用いてデプロイします。
-```bash
-cd v2/frontend
-# 初回のみプロジェクト作成
-npx wrangler pages project create pdftr-frontend --production-branch main
-
-# デプロイ実行
-npx wrangler pages deploy dist --project-name pdftr-frontend --branch main
-```
-> 出力された Pages URL を控え、Firebase Console の Authorized domains に追加してください。
+> 期待出力: 出力された Pages URL を控え、Firebase Console の Authorized domains に追加してください。
 
 ## 16. 本番E2Eテスト
 Pages URLをブラウザで開いて、以下を確認してください。

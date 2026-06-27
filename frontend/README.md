@@ -57,6 +57,9 @@ Runs Playwright E2E tests. Make sure you install playwright dependencies first (
 
 ## Deployment
 
+To deploy from the root of the project:
+
 ```bash
-npx wrangler pages deploy dist
+cd /srv/pdf2zh-web/v2
+npm run deploy:frontend
 ```
