@@ -52,6 +52,14 @@ export default function JobList() {
                   }`}>
                     {job.status}
                   </span>
+                  <Show when={job.status === 'running' && job.progress_percent !== undefined && job.progress_percent !== null}>
+                    <div style="margin-top: 8px; width: 100%; max-width: 120px; background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden;">
+                      <div style={`width: ${job.progress_percent * 100}%; background: #60a5fa; height: 100%; transition: width 0.3s;`} />
+                    </div>
+                    <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
+                      {Math.round(job.progress_percent * 100)}% {job.progress_phase ? `- ${job.progress_phase}` : ''}
+                    </div>
+                  </Show>
                 </td>
                 <td>{new Date(job.created_at).toLocaleString()}</td>
                 <td><A href={`/jobs/${job.id}`} class="btn">View</A></td>

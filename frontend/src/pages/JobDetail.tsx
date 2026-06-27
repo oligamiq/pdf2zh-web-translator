@@ -67,11 +67,29 @@ export default function JobDetail() {
           <div>
             <div style="color: var(--text-muted); font-size: 0.875rem;">Status</div>
             <div style="font-weight: 500; text-transform: uppercase;">{job().status}</div>
+            <Show when={job().status === 'running' && job().progress_percent !== undefined && job().progress_percent !== null}>
+              <div style="margin-top: 8px; width: 100%; max-width: 200px; background: rgba(255,255,255,0.1); height: 8px; border-radius: 4px; overflow: hidden;">
+                <div style={`width: ${job().progress_percent * 100}%; background: #60a5fa; height: 100%; transition: width 0.3s;`} />
+              </div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                {Math.round(job().progress_percent * 100)}% 
+                <Show when={job().progress_phase}> - {job().progress_phase}</Show>
+              </div>
+              <Show when={job().progress_message}>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">{job().progress_message}</div>
+              </Show>
+            </Show>
           </div>
           <Show when={job().status === 'failed' && job().error_message}>
             <div style="grid-column: 1 / -1; color: var(--danger);">
               <div style="color: var(--text-muted); font-size: 0.875rem;">Error Message</div>
               <div style="font-weight: 500;">{job().error_message}</div>
+              <Show when={job().log_tail}>
+                <div style="margin-top: 8px; color: var(--text-muted); font-size: 0.875rem;">Log Tail</div>
+                <pre style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px; font-size: 12px; overflow-x: auto; color: var(--text); white-space: pre-wrap;">
+                  {job().log_tail}
+                </pre>
+              </Show>
             </div>
           </Show>
           <Show when={job().status === 'succeeded'}>

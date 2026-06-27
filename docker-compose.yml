@@ -1,7 +1,7 @@
 services:
   pc-api:
     build:
-      context: ./pc-api
+      context: ./pc-api-python
     env_file:
       - .env
     environment:
