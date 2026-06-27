@@ -1,12 +1,13 @@
 import { createSignal, onMount, Show, onCleanup, createEffect } from 'solid-js';
 import { useParams, A } from '@solidjs/router';
-import { getJob, downloadJob } from '../api';
+import { getJob, downloadJob, getJobAttempts } from '../api';
 import LogViewer from '../components/LogViewer';
 import { authReady, currentUser } from '../authState';
 
 export default function JobDetail() {
   const params = useParams();
   const [job, setJob] = createSignal<any>(null);
+  const [attempts, setAttempts] = createSignal<any[]>([]);
   const [error, setError] = createSignal("");
   const [downloading, setDownloading] = createSignal(false);
 
@@ -14,6 +15,8 @@ export default function JobDetail() {
     try {
       const data = await getJob(params.id!);
       setJob(data);
+      const attemptsData = await getJobAttempts(params.id!);
+      setAttempts(attemptsData || []);
     } catch (err: any) {
       setError(err.message);
     }
@@ -109,6 +112,25 @@ export default function JobDetail() {
             </div>
           </Show>
         </div>
+
+        <Show when={attempts().length > 0}>
+          <div class="panel" style="flex-shrink: 0; margin-top: 16px;">
+            <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 1rem; color: var(--text);">API Provider Attempts</h3>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              {attempts().map((attempt: any) => (
+                <div style={`padding: 12px; border-radius: 6px; background: rgba(0,0,0,0.2); border-left: 4px solid ${attempt.status === 'success' ? 'var(--success)' : attempt.status === 'failed' ? 'var(--danger)' : 'var(--accent)'}`}>
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                    <strong style="color: var(--text);">{attempt.display_name} ({attempt.model})</strong>
+                    <span style="font-size: 0.875rem; text-transform: capitalize; color: var(--text-muted);">{attempt.status}</span>
+                  </div>
+                  <Show when={attempt.error_message}>
+                    <div style="font-size: 0.875rem; color: var(--danger); margin-top: 4px;">Error {attempt.http_status ? `(HTTP ${attempt.http_status})` : ''}: {attempt.error_message}</div>
+                  </Show>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Show>
         
         <LogViewer jobId={params.id!} status={job().status} />
       </Show>

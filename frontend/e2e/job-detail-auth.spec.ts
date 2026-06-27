@@ -65,6 +65,33 @@ test.describe('Job Details Auth & Retry', () => {
       });
     });
 
+    await page.route('**/jobs/job-123/attempts', async route => {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 'attempt-1',
+            job_id: 'job-123',
+            provider_order: 1,
+            display_name: 'Provider 1 (Ollama)',
+            model: 'llama3',
+            status: 'failed',
+            http_status: 401,
+            error_message: 'Unauthorized'
+          },
+          {
+            id: 'attempt-2',
+            job_id: 'job-123',
+            provider_order: 2,
+            display_name: 'Provider 2 (OpenAI)',
+            model: 'gpt-4o',
+            status: 'success'
+          }
+        ]),
+      });
+    });
+
     // 2. Go to job detail directly (simulate reload)
     await page.goto('/jobs/job-123');
 
@@ -74,6 +101,12 @@ test.describe('Job Details Auth & Retry', () => {
     // 4. Wait for job details to load successfully (authReady -> fetch -> 401 -> retry -> 200)
     await expect(page.getByText('retry-test.pdf')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('text=COMPLETED')).toBeVisible();
+
+    // 5. Check if attempts are displayed
+    await expect(page.getByText('API Provider Attempts')).toBeVisible();
+    await expect(page.getByText('Provider 1 (Ollama)')).toBeVisible();
+    await expect(page.getByText('Provider 2 (OpenAI)')).toBeVisible();
+    await expect(page.getByText('Error (HTTP 401): Unauthorized')).toBeVisible();
 
     // The fetch should have happened exactly twice (1 fail + 1 retry)
     expect(fetchCount).toBe(2);
@@ -97,6 +130,14 @@ test.describe('Job Details Auth & Retry', () => {
       }
 
       fetchCount++;
+      return route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Unauthorized' }),
+      });
+    });
+
+    await page.route('**/jobs/job-123/attempts', async route => {
       return route.fulfill({
         status: 401,
         contentType: 'application/json',

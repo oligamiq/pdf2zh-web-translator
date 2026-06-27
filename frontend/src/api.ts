@@ -118,6 +118,16 @@ export async function getJob(id: string) {
   return apiFetch(`/jobs/${id}`).then(r => r.json());
 }
 
+export async function getJobAttempts(id: string) {
+  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
+  const publicJobs = JSON.parse(publicJobsStr);
+  const receipt = publicJobs[id];
+  if (receipt) {
+    return apiFetch(`/public/jobs/${id}/attempts?receipt=${receipt}`).then(r => r.json());
+  }
+  return apiFetch(`/jobs/${id}/attempts`).then(r => r.json());
+}
+
 export async function uploadJob(file: File, targetLanguage: string, turnstileToken?: string, clientId?: string) {
   const formData = new FormData();
   formData.append('pdf', file);

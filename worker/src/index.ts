@@ -966,6 +966,16 @@ app.get('/jobs/:id', authMiddleware, async (c) => {
   return c.json(job)
 })
 
+app.get('/jobs/:id/attempts', authMiddleware, async (c) => {
+  const uid = c.get('uid') as string
+  const id = c.req.param('id')
+  const job = await c.env.DB.prepare(`SELECT id FROM jobs WHERE id = ? AND user_id = ?`).bind(id, uid).first()
+  if (!job) return c.json({ error: 'Not found' }, 404)
+  
+  const attempts = await c.env.DB.prepare(`SELECT * FROM job_api_provider_attempts WHERE job_id = ? ORDER BY provider_order ASC`).bind(id).all()
+  return c.json(attempts.results)
+})
+
 app.get('/jobs/:id/log', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const id = c.req.param('id')
@@ -1017,6 +1027,19 @@ app.get('/public/jobs/:id', async (c) => {
   const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   return c.json(job)
+})
+
+app.get('/public/jobs/:id/attempts', async (c) => {
+  const id = c.req.param('id')
+  const receipt = c.req.query('receipt')
+  if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
+  
+  const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
+  const job = await c.env.DB.prepare(`SELECT id FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).first()
+  if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
+  
+  const attempts = await c.env.DB.prepare(`SELECT * FROM job_api_provider_attempts WHERE job_id = ? ORDER BY provider_order ASC`).bind(id).all()
+  return c.json(attempts.results)
 })
 
 app.get('/public/jobs/:id/log', async (c) => {
