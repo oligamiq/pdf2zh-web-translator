@@ -2,7 +2,7 @@ import { createSignal, onMount, onCleanup, createEffect, Show } from 'solid-js';
 import { uploadJob, getLlmSettings, updateLlmSettings } from '../api';
 import { currentUser, authReady } from '../authState';
 
-export default function UploadForm() {
+export default function UploadForm(props: { onUploadSuccess?: () => void }) {
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal("");
   const [apiKey, setApiKey] = createSignal("");
@@ -36,8 +36,21 @@ export default function UploadForm() {
       }
     };
     
-    // Slight delay to ensure DOM is ready
-    setTimeout(renderTurnstile, 500);
+    const loadTurnstile = () => {
+      // @ts-ignore
+      if (window.turnstile || document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]')) {
+        setTimeout(renderTurnstile, 500);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      script.async = true;
+      script.defer = true;
+      script.onload = () => setTimeout(renderTurnstile, 500);
+      document.head.appendChild(script);
+    };
+
+    loadTurnstile();
 
     // Global Drag & Drop handlers
     const handleDragEnter = (e: DragEvent) => {
@@ -158,7 +171,9 @@ export default function UploadForm() {
       for (let i = 0; i < files.length; i++) {
         await uploadJob(files[i], turnstileToken(), apiKey(), clientId, saveApiKeyToSettings());
       }
-      window.location.reload();
+      if (props.onUploadSuccess) {
+        props.onUploadSuccess();
+      }
     } catch (err: any) {
       if (err.message && err.message.includes('Public fallback LLM is not configured')) {
         setError("APIキーなしのお試し変換は現在利用できません。\nOllama APIキーを入力して再試行するか、Googleログイン後にSettingsでAPIキーを保存してください。");

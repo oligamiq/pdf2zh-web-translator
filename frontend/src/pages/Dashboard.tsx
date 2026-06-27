@@ -10,6 +10,7 @@ export default function Dashboard() {
   const [health, setHealth] = createSignal<string>('Checking...');
   const [loginError, setLoginError] = createSignal<string>('');
   const [signingIn, setSigningIn] = createSignal(false);
+  const [refreshFlag, setRefreshFlag] = createSignal(0);
 
   const fetchHealth = async () => {
     try {
@@ -97,8 +98,8 @@ export default function Dashboard() {
           </Show>
         </div>
       </div>
-      <UploadForm />
-      <JobList />
+      <UploadForm onUploadSuccess={() => setRefreshFlag(f => f + 1)} />
+      <JobList authReady={authReady()} user={currentUser()} refreshFlag={refreshFlag()} />
     </div>
   );
 }

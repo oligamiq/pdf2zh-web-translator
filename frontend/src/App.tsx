@@ -14,8 +14,16 @@ export default function App(props: { children?: JSX.Element }) {
       import.meta.env.VITE_E2E_AUTH_BYPASS === 'true';
 
     if (isE2EAuthBypassEnabled && sessionStorage.getItem('e2e_token')) {
-      setCurrentUser({ uid: 'e2e-user', email: sessionStorage.getItem('e2e_user_email') || 'e2e-user@example.com' } as User);
-      setAuthReady(true);
+      const delay = sessionStorage.getItem('e2e_delay_auth');
+      if (delay) {
+        setTimeout(() => {
+          setCurrentUser({ uid: 'e2e-user', email: sessionStorage.getItem('e2e_user_email') || 'e2e-user@example.com' } as User);
+          setAuthReady(true);
+        }, parseInt(delay));
+      } else {
+        setCurrentUser({ uid: 'e2e-user', email: sessionStorage.getItem('e2e_user_email') || 'e2e-user@example.com' } as User);
+        setAuthReady(true);
+      }
       return () => {};
     }
     const unsub = onAuthStateChanged(auth, (u) => {

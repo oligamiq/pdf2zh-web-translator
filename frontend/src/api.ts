@@ -3,14 +3,14 @@ import { setCurrentUser } from './authState';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
-async function getToken() {
+async function getToken(forceRefresh: boolean = false) {
   const isE2EAuthBypassEnabled =
     import.meta.env.MODE === 'e2e' &&
     import.meta.env.VITE_E2E_AUTH_BYPASS === 'true';
 
   const e2eToken = isE2EAuthBypassEnabled ? sessionStorage.getItem('e2e_token') : null;
   if (e2eToken) return e2eToken;
-  return auth.currentUser ? await auth.currentUser.getIdToken() : null;
+  return auth.currentUser ? await auth.currentUser.getIdToken(forceRefresh) : null;
 }
 
 export function isAuthenticated(): boolean {
@@ -39,8 +39,8 @@ export async function logout() {
   await auth.signOut();
   setCurrentUser(null);
 }
-export async function apiFetch(endpoint: string, options: RequestInit = {}) {
-  const token = await getToken();
+export async function apiFetch(endpoint: string, options: RequestInit = {}, forceRefresh: boolean = false, retryCount: number = 0): Promise<Response> {
+  const token = await getToken(forceRefresh);
   
   const headers = new Headers(options.headers || {});
   if (token) {
@@ -56,6 +56,9 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     
     if (!response.ok) {
       if (response.status === 401) {
+        if (retryCount === 0 && isAuthenticated()) {
+          return await apiFetch(endpoint, options, true, 1);
+        }
         throw new Error("Unauthorized (Firebase login expired or invalid)");
       }
       const errText = await response.text();

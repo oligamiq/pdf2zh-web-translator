@@ -276,7 +276,10 @@ test.describe('Public Upload UI', () => {
     await expect(page.locator('h1', { hasText: 'Dashboard' })).toBeVisible();
 
     // The header shows 'Checking sign-in...'
-    await expect(page.locator('text=Checking sign-in...')).toBeVisible();
+    await expect(page.locator('.header').getByText('Checking sign-in...')).toBeVisible();
+    
+    // The JobQueue shows 'Loading jobs...'
+    await expect(page.getByTestId('job-queue').getByText('Loading jobs...')).toBeVisible();
     
     // The Upload PDF form should be visible
     await expect(page.locator('text=Drag and drop or click to select PDF file')).toBeVisible();
@@ -288,7 +291,8 @@ test.describe('Public Upload UI', () => {
     await expect(page.locator('span', { hasText: 'Guest mode' })).toBeVisible({ timeout: 5000 });
     
     // Now the messages should be gone
-    await expect(page.locator('text=Checking sign-in...')).toBeHidden();
+    await expect(page.locator('.header').getByText('Checking sign-in...')).toBeHidden();
+    await expect(page.getByTestId('job-queue').getByText('Loading jobs...')).toBeHidden();
     await expect(page.locator('text=Initializing sign-in state...')).toBeHidden();
   });
 

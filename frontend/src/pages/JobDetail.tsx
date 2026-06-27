@@ -1,7 +1,8 @@
-import { createSignal, onMount, Show, onCleanup } from 'solid-js';
+import { createSignal, onMount, Show, onCleanup, createEffect } from 'solid-js';
 import { useParams, A } from '@solidjs/router';
 import { getJob, downloadJob } from '../api';
 import LogViewer from '../components/LogViewer';
+import { authReady, currentUser } from '../authState';
 
 export default function JobDetail() {
   const params = useParams();
@@ -18,9 +19,15 @@ export default function JobDetail() {
     }
   };
 
-  onMount(() => {
+  createEffect(() => {
+    if (!authReady()) return;
+    if (currentUser()) {} else {}
     fetchJob();
+  });
+
+  onMount(() => {
     const interval = setInterval(() => {
+      if (!authReady()) return;
       const currentStatus = job()?.status;
       if (currentStatus === 'queued' || currentStatus === 'running') {
         fetchJob();
@@ -58,7 +65,7 @@ export default function JobDetail() {
 
       {error() && <div class="panel" style="background: rgba(239, 68, 68, 0.1); border-left: 4px solid var(--danger);">{error()}</div>}
 
-      <Show when={job()} fallback={<p>Loading...</p>}>
+      <Show when={job()} fallback={<p>{!authReady() ? "Checking sign-in..." : "Loading job details..."}</p>}>
         <div class="panel" style="flex-shrink: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
           <div>
             <div style="color: var(--text-muted); font-size: 0.875rem;">Filename</div>
@@ -69,10 +76,10 @@ export default function JobDetail() {
             <div style="font-weight: 500; text-transform: uppercase;">{job().status}</div>
             <Show when={job().status === 'running' && job().progress_percent !== undefined && job().progress_percent !== null}>
               <div style="margin-top: 8px; width: 100%; max-width: 200px; background: rgba(255,255,255,0.1); height: 8px; border-radius: 4px; overflow: hidden;">
-                <div style={`width: ${job().progress_percent * 100}%; background: #60a5fa; height: 100%; transition: width 0.3s;`} />
+                <div style={`width: ${Math.max(0, Math.min(100, Math.round(job().progress_percent ?? 0)))}%; background: #60a5fa; height: 100%; transition: width 0.3s;`} />
               </div>
               <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                {Math.round(job().progress_percent * 100)}% 
+                {Math.max(0, Math.min(100, Math.round(job().progress_percent ?? 0)))}% 
                 <Show when={job().progress_phase}> - {job().progress_phase}</Show>
               </div>
               <Show when={job().progress_message}>
@@ -85,14 +92,16 @@ export default function JobDetail() {
               <div style="color: var(--text-muted); font-size: 0.875rem;">Error Message</div>
               <div style="font-weight: 500;">{job().error_message}</div>
               <Show when={job().log_tail}>
-                <div style="margin-top: 8px; color: var(--text-muted); font-size: 0.875rem;">Log Tail</div>
-                <pre style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px; font-size: 12px; overflow-x: auto; color: var(--text); white-space: pre-wrap;">
-                  {job().log_tail}
-                </pre>
+                <details style="margin-top: 8px;">
+                  <summary style="cursor: pointer; color: var(--text-muted); font-size: 0.875rem; user-select: none;">Live Log Tail</summary>
+                  <pre class="log-tail" style="margin-top: 8px; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 4px; font-size: 12px; overflow-x: auto; overflow-y: auto; color: var(--text); white-space: pre-wrap; word-break: break-word; max-height: 18rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
+                    {job().log_tail}
+                  </pre>
+                </details>
               </Show>
             </div>
           </Show>
-          <Show when={job().status === 'succeeded'}>
+          <Show when={job().status === 'completed' || job().status === 'succeeded'}>
             <div style="grid-column: 1 / -1; margin-top: 16px;">
               <button class="btn" onClick={handleDownload} disabled={downloading()}>
                 {downloading() ? 'Downloading...' : 'Download ZIP'}

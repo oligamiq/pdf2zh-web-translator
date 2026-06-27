@@ -3,11 +3,11 @@ set -e
 
 echo "Running E2E Progress Smoke Test..."
 
-WORKER_API="http://localhost:8787"
+WORKER_URL="${WORKER_URL:-http://localhost:8787}"
 
 # Check if worker is up
-if ! curl -s $WORKER_API/health > /dev/null; then
-  echo "Worker API not reachable at $WORKER_API"
+if ! curl -s $WORKER_URL/healthz > /dev/null; then
+  echo "Worker API not reachable at $WORKER_URL"
   exit 1
 fi
 
@@ -16,11 +16,12 @@ echo "%PDF-1.4" > test_smoke.pdf
 echo "%%EOF" >> test_smoke.pdf
 
 echo "Uploading PDF and creating job..."
-RESPONSE=$(curl -s -X POST $WORKER_API/api/jobs \
+RESPONSE=$(curl -s -X POST $WORKER_URL/jobs \
   -H "Content-Type: multipart/form-data" \
-  -F "file=@test_smoke.pdf")
+  -F "pdf=@test_smoke.pdf")
 
 JOB_ID=$(echo $RESPONSE | grep -o '"id":"[^"]*' | grep -o '[^"]*$')
+RECEIPT=$(echo $RESPONSE | grep -o '"receipt":"[^"]*' | grep -o '[^"]*$')
 
 if [ -z "$JOB_ID" ]; then
   echo "Failed to create job: $RESPONSE"
@@ -37,7 +38,7 @@ FAILED_PROPERLY=0
 LOG_TAIL_HAS_ERROR=0
 
 while [ $RETRY -lt $MAX_RETRIES ]; do
-  JOB_RESP=$(curl -s $WORKER_API/api/jobs/$JOB_ID)
+  JOB_RESP=$(curl -s $WORKER_URL/public/jobs/$JOB_ID?receipt=$RECEIPT)
   STATUS=$(echo "$JOB_RESP" | grep -o '"status":"[^"]*' | grep -o '[^"]*$')
   PERCENT=$(echo "$JOB_RESP" | grep -o '"progress_percent":[^,}]*' | cut -d':' -f2)
   PHASE=$(echo "$JOB_RESP" | grep -o '"progress_phase":"[^"]*' | grep -o '[^"]*$' || echo "null")
@@ -48,8 +49,8 @@ while [ $RETRY -lt $MAX_RETRIES ]; do
     SAW_PROGRESS=1
   fi
   
-  if [ "$STATUS" = "succeeded" ]; then
-    echo "Job succeeded!"
+  if [ "$STATUS" = "completed" ]; then
+    echo "Job completed!"
     break
   fi
   
