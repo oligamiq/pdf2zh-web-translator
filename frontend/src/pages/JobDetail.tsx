@@ -13,9 +13,11 @@ export default function JobDetail() {
 
   const fetchJob = async () => {
     try {
-      const data = await getJob(params.id!);
+      const [data, attemptsData] = await Promise.all([
+        getJob(params.id!),
+        getJobAttempts(params.id!)
+      ]);
       setJob(data);
-      const attemptsData = await getJobAttempts(params.id!);
       setAttempts(attemptsData || []);
     } catch (err: any) {
       setError(err.message);
