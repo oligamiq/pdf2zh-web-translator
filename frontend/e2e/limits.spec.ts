@@ -43,7 +43,7 @@ test.describe('Usage limits', () => {
     // Check for limit text
     // The component has "Guest Mode" or "Logged-in Mode" text when limits are loaded
     await expect(page.locator('text=ゲスト利用').first()).toBeVisible();
-    await expect(page.locator('text=5 MiBまで').first()).toBeVisible();
-    await expect(page.locator('text=1日3件まで').first()).toBeVisible();
+    await expect(page.locator('text=5 MiB').first()).toBeVisible();
+    await expect(page.locator('text=1日3件').first()).toBeVisible();
   });
 });

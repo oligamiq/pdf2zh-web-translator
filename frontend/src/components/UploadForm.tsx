@@ -221,33 +221,48 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
         </div>
       </Show>
 
-      <div class="panel" style="text-align: left; padding: 32px; position: relative; margin-bottom: 24px;">
-        <h3 style="margin-top: 0;">アップロード</h3>
+      <div class="panel upload-card" style="text-align: left; position: relative; margin-bottom: 24px;">
+        <h3 class="upload-title" style="margin-top: 0;">アップロード</h3>
         {error() && <div style="color: var(--danger); margin-bottom: 16px; white-space: pre-wrap;">{error()}</div>}
-      
-      <Show when={limits()}>
-        <div style="background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--accent); padding: 12px; margin-bottom: 20px; font-size: 14px;">
-          <h4 style="margin: 0 0 8px 0; color: var(--accent);">
-            {limits().scope === 'public' ? 'ゲスト利用' : 'ログイン中'}
-          </h4>
-          <p style="margin: 0 0 8px 0; color: var(--text-muted);">
-            {limits().scope === 'public' 
-              ? `ゲスト利用: PDFは${limits().pdf_max_bytes / (1024 * 1024)} MiBまで、1日${limits().jobs_per_day}件まで。結果は${limits().public_job_expiry_hours}時間程度で期限切れになります。`
-              : `ログイン中: PDFは${limits().pdf_max_bytes / (1024 * 1024)} MiBまで、1日${limits().jobs_per_day}件まで。履歴は${limits().retention_days}日間保持されます。`
-            }
-          </p>
-          <A href="/about" style="color: var(--accent); text-decoration: none; font-weight: bold;">&rarr; 利用制限と注意事項</A>
-          
-          <Show when={limits().scope === 'public'}>
-            <div id="turnstile-container" class="turnstile-container" style="margin-top: 16px;"></div>
-            <Show when={turnstileToken()}>
-              <div data-testid="turnstile-ready" style="display: none;"></div>
-            </Show>
-          </Show>
-        </div>
-      </Show>
 
-      <div style="margin-top: 16px; margin-bottom: 24px;">
+      {loading() ? (
+        <div style="text-align: center; padding: 40px; border: 2px dashed var(--border);">
+          <p>アップロード中...</p>
+        </div>
+      ) : (
+        <>
+          <div class="dropzone" style="text-align: center; padding: 40px; border: 2px dashed var(--border); position: relative; cursor: pointer; margin-bottom: 16px;">
+            <Show when={!authReady()}>
+              <p style="color: var(--accent); margin-bottom: 8px; font-weight: bold;">サインイン状態を初期化中...</p>
+            </Show>
+            <p style="color: var(--text-muted); pointer-events: none;">ドラッグ＆ドロップ、またはクリックしてPDFファイルを選択</p>
+            <input 
+              data-testid="pdf-file-input"
+              type="file" 
+              accept="application/pdf"
+              onChange={handleFileChange} 
+              disabled={!authReady()}
+              style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;"
+            />
+          </div>
+
+          <div class="mobile-file-picker" style="margin-bottom: 16px;">
+            <button data-testid="file-select-button" class="btn primary-file-button" disabled={!authReady()} onClick={() => document.getElementById('mobile-pdf-file-input')?.click()} style="width: 100%; min-height: 3.25rem; font-size: 1.1rem; font-weight: 700; background: var(--accent); color: white; border: none; border-radius: 8px; cursor: pointer;">
+              {!authReady() ? 'サインイン確認中...' : 'PDFファイルを選択'}
+            </button>
+            <input 
+              id="mobile-pdf-file-input"
+              type="file" 
+              accept="application/pdf"
+              onChange={handleFileChange} 
+              disabled={!authReady()}
+              style="display: none;"
+            />
+          </div>
+        </>
+      )}
+
+      <div style="margin-bottom: 16px;">
         <label style="display: block; font-weight: bold; margin-bottom: 4px;">翻訳先言語</label>
         <select 
           class="input"
@@ -265,26 +280,30 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
         </select>
       </div>
 
-      {loading() ? (
-        <div style="text-align: center; padding: 40px; border: 2px dashed var(--border);">
-          <p>アップロード中...</p>
-        </div>
-      ) : (
-        <div style="text-align: center; padding: 40px; border: 2px dashed var(--border); position: relative; cursor: pointer;">
-          <Show when={!authReady()}>
-            <p style="color: var(--accent); margin-bottom: 8px; font-weight: bold;">サインイン状態を初期化中...</p>
-          </Show>
-          <p style="color: var(--text-muted); pointer-events: none;">ドラッグ＆ドロップ、またはクリックしてPDFファイルを選択</p>
-          <input 
-            data-testid="pdf-file-input"
-            type="file" 
-            accept="application/pdf"
-            onChange={handleFileChange} 
-            disabled={!authReady()}
-            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;"
-          />
-        </div>
-      )}
+      <Show when={limits()}>
+        <details class="guest-limit-details" style="background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--accent); padding: 12px; margin-bottom: 16px; font-size: 14px;">
+          <summary style="cursor: pointer; font-weight: bold; color: var(--accent);">
+            {limits().scope === 'public' 
+              ? `ゲスト利用: ${limits().pdf_max_bytes / (1024 * 1024)} MiB / 1日${limits().jobs_per_day}件 / ${limits().public_job_expiry_hours}時間保存`
+              : `ログイン中: ${limits().pdf_max_bytes / (1024 * 1024)} MiB / 1日${limits().jobs_per_day}件 / ${limits().retention_days}日間保存`
+            }
+          </summary>
+          <p style="margin: 8px 0 0 0; color: var(--text-muted);">
+            {limits().scope === 'public' 
+              ? `PDFは${limits().pdf_max_bytes / (1024 * 1024)} MiBまで、1日${limits().jobs_per_day}件まで。結果は${limits().public_job_expiry_hours}時間程度で期限切れになります。`
+              : `PDFは${limits().pdf_max_bytes / (1024 * 1024)} MiBまで、1日${limits().jobs_per_day}件まで。履歴は${limits().retention_days}日間保持されます。`
+            }
+          </p>
+          <A href="/about" style="color: var(--accent); text-decoration: none; font-weight: bold;">&rarr; 利用制限と注意事項</A>
+        </details>
+      </Show>
+
+      <Show when={limits() && limits().scope === 'public'}>
+        <div id="turnstile-container" class="turnstile-container" style="margin-top: 16px;"></div>
+        <Show when={turnstileToken()}>
+          <div data-testid="turnstile-ready" style="display: none;"></div>
+        </Show>
+      </Show>
     </div>
     </>
   );

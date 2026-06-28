@@ -760,9 +760,22 @@ th { color: var(--text-muted); font-weight: normal; }
   }
 
   .brand-title {
-    font-size: clamp(1.75rem, 8vw, 2.5rem);
+    font-size: clamp(1.75rem, 7vw, 2.25rem);
     text-align: left;
     white-space: nowrap;
+    line-height: 1;
+  }
+
+  .app-header {
+    gap: 0.35rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .intro-text {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin-bottom: 0.75rem;
   }
 
   .account-actions,
@@ -807,5 +820,35 @@ th { color: var(--text-muted); font-weight: normal; }
     width: 100%;
     max-width: none;
     box-sizing: border-box;
+  }
+
+  .upload-card {
+    padding: 1rem !important;
+  }
+
+  .upload-title {
+    font-size: 1.5rem;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .dropzone {
+    display: none;
+  }
+
+  .mobile-file-picker {
+    display: block;
+  }
+
+  .primary-file-button {
+    width: 100%;
+    min-height: 3.25rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+}
+
+@media (min-width: 641px) {
+  .mobile-file-picker {
+    display: none;
   }
 }

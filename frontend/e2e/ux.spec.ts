@@ -38,7 +38,7 @@ test.describe('UX Improvements', () => {
     await page.goto('/');
 
     // Check health badge
-    await expect(page.getByText('変換サーバー: オンライン')).toBeVisible();
+    await expect(page.getByText('server: online')).toBeVisible();
 
     // Check 7-day note
     await expect(page.getByTestId('retention-note')).toBeVisible();
@@ -109,8 +109,7 @@ test.describe('UX Improvements', () => {
     });
 
     await page.goto('/');
-    await expect(page.getByText('変換サーバー: オフライン')).toBeVisible();
-    await expect(page.getByText('ジョブは登録できますが、サーバー復旧まで変換は開始されません')).toBeVisible();
+    await expect(page.getByText('server: offline')).toBeVisible();
   });
 });
 
@@ -160,5 +159,39 @@ test.describe('Mobile Layout', () => {
     expect(scrollWidth).toBeLessThanOrEqual(viewportWidth + 1);
     expect(brandBox!.x).toBeLessThan(40);
     expect(loginBox!.x + loginBox!.width).toBeLessThanOrEqual(viewportWidth + 1);
+  });
+
+  test('mobile upload CTA is visible above the fold for guests', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setupDefaultApiMocks(page);
+
+    await page.goto('/');
+
+    const selectButton = page.getByTestId('file-select-button');
+    await expect(selectButton).toBeVisible();
+
+    const box = await selectButton.boundingBox();
+    const viewportHeight = await page.evaluate(() => window.innerHeight);
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    const viewportWidth = await page.evaluate(() => window.innerWidth);
+
+    expect(box!.y).toBeLessThan(viewportHeight * 0.75);
+    expect(scrollWidth).toBeLessThanOrEqual(viewportWidth + 1);
+  });
+
+  test('mobile upload CTA is visible above the fold for signed-in users', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setupAuthenticatedUser(page);
+    await setupDefaultApiMocks(page);
+
+    await page.goto('/');
+
+    const selectButton = page.getByTestId('file-select-button');
+    await expect(selectButton).toBeVisible();
+
+    const box = await selectButton.boundingBox();
+    const viewportHeight = await page.evaluate(() => window.innerHeight);
+
+    expect(box!.y).toBeLessThan(viewportHeight * 0.75);
   });
 });

@@ -180,26 +180,28 @@ export default function Dashboard() {
             <A href="/licenses" style="color: var(--text-muted); font-size: 0.9rem; text-decoration: underline; padding: 0.5rem 0.75rem; margin-right: 0.5rem;">ライセンス</A>
           </div>
         </Show>
-
-        <div class="status-row">
-          <span>API状態: <strong style="color: var(--text);">{health()}</strong></span>
-          <Show when={pcHealth()} fallback={<span style="display: inline-block; padding: 4px 8px; border-radius: 4px; background: rgba(156, 163, 175, 0.2); color: #9ca3af; font-size: 0.75rem;">変換サーバー: 確認中...</span>}>
-            {(h) => (
-              h().ok ? (
-                <span style="display: inline-block; padding: 4px 8px; border-radius: 4px; background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 0.75rem;">変換サーバー: オンライン</span>
-              ) : (
-                <span style="display: inline-block; padding: 4px 8px; border-radius: 4px; background: rgba(239, 68, 68, 0.2); color: #f87171; font-size: 0.75rem; vertical-align: middle;">
-                  変換サーバー: オフライン（ジョブは登録できますが、サーバー復旧まで変換は開始されません）
-                </span>
-              )
-            )}
-          </Show>
-        </div>
       </header>
       
-      <p class="site-description">
-        PDFをアップロードすると、翻訳済みPDFと対訳PDFを生成してダウンロードできます。
+      <p class="site-description" style="margin-top: 0;">
+        ゲスト利用とGoogleログインに対応したPDF翻訳Webアプリです。
       </p>
+
+      <div class="status-row">
+        <span class="status-badge" style="display: inline-block; padding: 4px 8px; border-radius: 4px; background: rgba(156, 163, 175, 0.2); font-size: 0.75rem;">
+          API: <strong style="color: var(--text);">{health() === 'オンライン' ? 'online' : health()}</strong>
+        </span>
+        <Show when={pcHealth()} fallback={<span class="status-badge fallback" style="display: inline-block; padding: 4px 8px; border-radius: 4px; background: rgba(156, 163, 175, 0.2); color: #9ca3af; font-size: 0.75rem;">server: checking...</span>}>
+          {(h) => (
+            h().ok ? (
+              <span class="status-badge online" style="display: inline-block; padding: 4px 8px; border-radius: 4px; background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 0.75rem;">server: online</span>
+            ) : (
+              <span class="status-badge offline" style="display: inline-block; padding: 4px 8px; border-radius: 4px; background: rgba(239, 68, 68, 0.2); color: #f87171; font-size: 0.75rem; vertical-align: middle;">
+                server: offline
+              </span>
+            )
+          )}
+        </Show>
+      </div>
 
       <UploadForm onUploadSuccess={() => setRefreshFlag(f => f + 1)} />
       <JobList authReady={authReady()} user={currentUser()} refreshFlag={refreshFlag()} />
