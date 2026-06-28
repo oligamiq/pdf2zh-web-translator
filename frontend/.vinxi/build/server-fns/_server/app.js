@@ -1,0 +1,1 @@
+import{ssr as a,ssrHydrationKey as t}from"solid-js/web";var e=["<main",' class="container" style="padding:40px;text-align:center;"><h1>PDF翻訳アプリ</h1><p>次のPhaseで既存のアップロード画面をここに移動します。</p></main>'];function r(){return a(e,t())}export{r as default};
