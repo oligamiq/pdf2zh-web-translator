@@ -54,79 +54,104 @@ export default function Settings() {
     }
   };
 
+  const handleClearKey = async () => {
+    if (!confirm('デフォルトのOllama APIキーをクリアしてもよろしいですか？')) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      await updateApiBasicSettings({ target_language: targetLanguage(), api_key: "" });
+      setMessage({ type: 'success', text: 'API Key cleared successfully.' });
+      setHasApiKey(false);
+      setApiKey('');
+    } catch (err: any) {
+      setMessage({ type: 'error', text: 'Failed to clear API Key: ' + err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <div class="container mx-auto p-4 max-w-2xl">
-      <div class="flex justify-between items-center mb-6">
-        <h1 class="text-2xl font-bold">Basic Settings</h1>
-        <div class="flex gap-4">
-          <A href="/settings/advanced" class="px-4 py-2 bg-blue-700 hover:bg-blue-600 rounded text-sm text-white transition-colors">Advanced Routing</A>
-          <A href="/" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm text-gray-100 transition-colors">← Back</A>
-        </div>
+    <div class="settings-page">
+      <div class="header" style="border-bottom: none; padding-bottom: 0;">
+        <h1 style="margin:0; font-size: 1.5rem;">設定</h1>
+        <A href="/" class="button button-secondary">← 戻る</A>
       </div>
 
-      <Show when={!loading()} fallback={<div class="p-4 text-gray-400">Loading settings...</div>}>
+      <Show when={!loading()} fallback={<div style="color: var(--text-muted); padding-top: 24px;">設定を読み込み中...</div>}>
         <Show when={!currentUser()}>
-          <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
-            <h2 class="text-xl text-blue-400 font-bold mb-2">Settings are available after signing in.</h2>
-            <p class="text-gray-300">Please sign in to configure default target language and API providers.</p>
+          <div class="settings-card" style="margin-top: 24px;">
+            <h2 class="settings-section-title" style="color: var(--primary);">設定はログイン後に利用可能です。</h2>
+            <p class="settings-section-desc">サインインして、翻訳先言語やAPIプロバイダを設定してください。</p>
           </div>
         </Show>
         <Show when={currentUser()}>
-          <div class="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
-          
-          <Show when={message()}>
-            <div class={`mb-4 p-3 rounded ${message()?.type === 'success' ? 'bg-green-900/50 text-green-300 border border-green-800' : 'bg-red-900/50 text-red-300 border border-red-800'}`}>
-              {message()?.text}
-            </div>
-          </Show>
-
-          <form onSubmit={handleSave} class="space-y-5">
-            <div>
-              <label class="block text-sm font-medium text-gray-300 mb-1">Default Target Language</label>
-              <select
-                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:outline-none focus:border-blue-500"
-                value={targetLanguage()}
-                onChange={(e) => setTargetLanguage(e.currentTarget.value)}
-              >
-                <option value="ja">Japanese</option>
-                <option value="en">English</option>
-                <option value="zh">Chinese</option>
-                <option value="ko">Korean</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="es">Spanish</option>
-              </select>
-            </div>
-
-            <div class="pt-2 border-t border-gray-700 mt-4">
-              <label class="block text-sm font-medium text-gray-300 mb-1 flex justify-between">
-                <span>Ollama API Key</span>
-                <Show when={hasApiKey()}>
-                  <span class="text-xs px-2 py-0.5 rounded bg-green-900/40 text-green-400 border border-green-800/50">Saved</span>
-                </Show>
-              </label>
-              <div class="flex gap-2">
-                <input
-                  type="password"
-                  placeholder={hasApiKey() ? "Enter new API Key to override" : "Enter API Key"}
-                  class="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:outline-none focus:border-blue-500"
-                  value={apiKey()}
-                  onInput={(e) => setApiKey(e.currentTarget.value)}
-                />
+          <div class="settings-card" style="margin-top: 24px;">
+            <h2 class="settings-section-title">基本API設定</h2>
+            <p class="settings-section-desc">通常はOllama APIキーのみ必要です。</p>
+            
+            <Show when={message()}>
+              <div class={`alert ${message()?.type === 'success' ? 'alert-success' : 'alert-error'}`}>
+                {message()?.text}
               </div>
-              <p class="text-xs text-gray-400 mt-1">Sets the API key for your default primary provider. Go to Advanced Routing to configure multiple fallback providers.</p>
-            </div>
+            </Show>
 
-            <div class="pt-4 flex justify-end">
-              <button
-                type="submit"
-                disabled={saving()}
-                class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded shadow disabled:opacity-50 transition-colors"
-              >
-                {saving() ? 'Saving...' : 'Save Settings'}
-              </button>
-            </div>
-          </form>
+            <form onSubmit={handleSave} style="margin-top: 24px;">
+              <div class="settings-section">
+                <div class="form-group">
+                  <label class="form-label">翻訳先言語 (デフォルト)</label>
+                  <select
+                    class="form-select"
+                    value={targetLanguage()}
+                    onChange={(e) => setTargetLanguage(e.currentTarget.value)}
+                  >
+                    <option value="ja">日本語</option>
+                    <option value="en">英語</option>
+                    <option value="zh">中国語</option>
+                    <option value="ko">韓国語</option>
+                    <option value="fr">フランス語</option>
+                    <option value="de">ドイツ語</option>
+                    <option value="es">スペイン語</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="settings-section" style="border-top: 1px solid var(--border); padding-top: 24px;">
+                <div class="form-group">
+                  <div class="form-label-flex">
+                    <label class="form-label" style="margin-bottom:0;">Ollama API Key</label>
+                    <Show when={hasApiKey()}>
+                      <span class="status-badge status-success" style="background: transparent; border: 1px solid var(--success); color: var(--success);">保存済み</span>
+                    </Show>
+                  </div>
+                  <div style="margin-top: 8px;">
+                    <input
+                      type="password"
+                      placeholder={hasApiKey() ? "新しいAPIキーを入力して上書き" : "••••••••••••••••"}
+                      class="form-input"
+                      value={apiKey()}
+                      onInput={(e) => setApiKey(e.currentTarget.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;">
+                <Show when={hasApiKey()}>
+                  <button type="button" class="button button-danger" disabled={saving()} onClick={handleClearKey}>
+                    クリア
+                  </button>
+                </Show>
+                <button type="submit" class="button button-primary" disabled={saving()}>
+                  {saving() ? '保存中...' : '保存'}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div class="settings-card">
+            <h2 class="settings-section-title">高度なAPIルーティング</h2>
+            <p class="settings-section-desc">Providerは上から順に試行されます。1つが失敗した場合、次の有効なProviderが使用されます。</p>
+            <A href="/settings/advanced" class="button button-secondary" style="margin-top: 8px;">高度な設定を開く</A>
           </div>
         </Show>
       </Show>

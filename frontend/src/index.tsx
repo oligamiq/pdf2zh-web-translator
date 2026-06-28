@@ -6,6 +6,8 @@ import Dashboard from './pages/Dashboard';
 import JobDetail from './pages/JobDetail';
 import Settings from './pages/Settings';
 import AdvancedSettings from './pages/AdvancedSettings';
+import About from './pages/About';
+import Licenses from './pages/Licenses';
 
 const root = document.getElementById('root');
 
@@ -23,6 +25,8 @@ render(
       <Route path="/jobs/:id" component={JobDetail} />
       <Route path="/settings" component={Settings} />
       <Route path="/settings/advanced" component={AdvancedSettings} />
+      <Route path="/about" component={About} />
+      <Route path="/licenses" component={Licenses} />
     </Router>
   ),
   root!

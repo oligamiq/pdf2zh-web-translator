@@ -9,12 +9,12 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
   const [showApiKeyModal, setShowApiKeyModal] = createSignal(false);
   const [turnstileToken, setTurnstileToken] = createSignal("");
   const [targetLanguage, setTargetLanguage] = createSignal("ja"); // Default
+  const [limits, setLimits] = createSignal<any>(null);
   
   const [isDragging, setIsDragging] = createSignal(false);
   let dragCounter = 0;
 
   const isGuest = () => authReady() && !currentUser();
-  const isLoggedIn = () => authReady() && !!currentUser();
 
   onMount(() => {
     // Turnstile logic...
@@ -79,7 +79,7 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
       if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
         const file = e.dataTransfer.files[0];
         if (file.type !== 'application/pdf') {
-          setError("Please upload a PDF file.");
+          setError("PDFファイルをアップロードしてください。");
           return;
         }
         await processFiles(e.dataTransfer.files);
@@ -100,6 +100,11 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
   });
 
   createEffect(() => {
+    if (authReady()) {
+      import('../api').then(({ getLimits }) => {
+        getLimits().then(setLimits).catch(console.error);
+      });
+    }
     if (currentUser()) {
       getApiBasicSettings().then(data => {
         if (data.target_language) {
@@ -113,12 +118,12 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
     if (files.length === 0) return;
     
     if (!authReady()) {
-      setError("Initializing sign-in state... Please try again in a moment.");
+      setError("サインイン状態を初期化中です... 少し待ってからもう一度お試しください。");
       return;
     }
 
     if (isGuest() && !turnstileToken()) {
-      setError("Please complete the Turnstile challenge first.");
+      setError("まずはTurnstileチャレンジを完了してください。");
       return;
     }
 
@@ -142,8 +147,14 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
     } catch (err: any) {
       if (err.message && err.message.includes('api_key_required')) {
         setShowApiKeyModal(true);
+      } else if (err.message && err.message.includes('file_too_large')) {
+        setError(`PDFサイズが大きすぎます。${isGuest() ? 'ゲスト利用では5 MiBまでです。' : ''}`);
+      } else if (err.message && err.message.includes('rate_limit_exceeded')) {
+        setError('今日の変換回数上限に達しました。明日以降に再試行してください。');
+      } else if (err.message && err.message.includes('Failed to fetch')) {
+        setError('変換サーバーに接続できません。');
       } else {
-        setError(err.message);
+        setError(`変換に失敗しました: ${err.message}`);
       }
       if (isGuest()) {
         // @ts-ignore
@@ -186,7 +197,7 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
             "text-align": 'center',
             "box-shadow": '0 20px 25px -5px rgba(0, 0, 0, 0.5)'
           }}>
-            <h2 style={{ margin: 0, color: 'var(--accent)', "font-size": '2rem' }}>Drop PDF anywhere to upload</h2>
+            <h2 style={{ margin: 0, color: 'var(--accent)', "font-size": '2rem' }}>どこでもドロップしてアップロード</h2>
           </div>
         </div>
       </Show>
@@ -200,64 +211,70 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
           display: 'flex', "align-items": 'center', "justify-content": 'center'
         }}>
           <div style={{ background: 'var(--bg-color)', padding: '24px', "border-radius": '8px', "max-width": '400px', width: '90%' }}>
-            <h3 style={{ margin: '0 0 16px 0', color: 'var(--danger)' }}>API Key Required</h3>
-            <p style={{ margin: '0 0 24px 0' }}>You need an active LLM provider with an API key to perform this conversion. Please set one up in your settings.</p>
+            <h3 style={{ margin: '0 0 16px 0', color: 'var(--danger)' }}>APIキーが必要です</h3>
+            <p style={{ margin: '0 0 24px 0' }}>APIキーが設定されていません。設定画面でAPIキーを登録してください。</p>
             <div style={{ display: 'flex', gap: '12px', "justify-content": 'flex-end' }}>
-              <button class="btn btn-secondary" onClick={() => setShowApiKeyModal(false)} style={{ background: 'transparent', border: '1px solid var(--border)' }}>Cancel</button>
-              <A href="/settings" class="btn" onClick={() => setShowApiKeyModal(false)}>Go to Settings</A>
+              <button class="btn btn-secondary" onClick={() => setShowApiKeyModal(false)} style={{ background: 'transparent', border: '1px solid var(--border)' }}>キャンセル</button>
+              <A href="/settings" class="btn" onClick={() => setShowApiKeyModal(false)}>設定へ移動</A>
             </div>
           </div>
         </div>
       </Show>
 
       <div class="panel" style="text-align: left; padding: 32px; position: relative; margin-bottom: 24px;">
-        <h3 style="margin-top: 0;">Upload PDF</h3>
+        <h3 style="margin-top: 0;">アップロード</h3>
         {error() && <div style="color: var(--danger); margin-bottom: 16px; white-space: pre-wrap;">{error()}</div>}
       
-      <Show when={isGuest()}>
+      <Show when={limits()}>
         <div style="background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--accent); padding: 12px; margin-bottom: 20px; font-size: 14px;">
-          <h4 style="margin: 0 0 8px 0; color: var(--accent);">Guest Mode</h4>
-          <ul style="margin: 0; padding-left: 20px; color: var(--text-muted);">
-            <li>Max file size: 5 MiB</li>
-            <li>Limited to 1 job per day per device</li>
-            <li>Results are deleted after 24 hours</li>
-          </ul>
+          <h4 style="margin: 0 0 8px 0; color: var(--accent);">
+            {limits().scope === 'public' ? 'ゲスト利用' : 'ログイン中'}
+          </h4>
+          <p style="margin: 0 0 8px 0; color: var(--text-muted);">
+            {limits().scope === 'public' 
+              ? `ゲスト利用: PDFは${limits().pdf_max_bytes / (1024 * 1024)} MiBまで、1日${limits().jobs_per_day}件まで。結果は${limits().public_job_expiry_hours}時間程度で期限切れになります。`
+              : `ログイン中: PDFは${limits().pdf_max_bytes / (1024 * 1024)} MiBまで、1日${limits().jobs_per_day}件まで。履歴は${limits().retention_days}日間保持されます。`
+            }
+          </p>
+          <A href="/about" style="color: var(--accent); text-decoration: none; font-weight: bold;">&rarr; 利用制限と注意事項</A>
           
-          <div id="turnstile-container" style="margin-top: 16px;"></div>
-          <Show when={turnstileToken()}>
-            <div data-testid="turnstile-ready" style="display: none;"></div>
+          <Show when={limits().scope === 'public'}>
+            <div id="turnstile-container" style="margin-top: 16px;"></div>
+            <Show when={turnstileToken()}>
+              <div data-testid="turnstile-ready" style="display: none;"></div>
+            </Show>
           </Show>
         </div>
       </Show>
 
       <div style="margin-top: 16px; margin-bottom: 24px;">
-        <label style="display: block; font-weight: bold; margin-bottom: 4px;">Target Language</label>
+        <label style="display: block; font-weight: bold; margin-bottom: 4px;">翻訳先言語</label>
         <select 
           class="input"
           value={targetLanguage()} 
           onChange={(e) => setTargetLanguage(e.currentTarget.value)}
           style="width: 100%; max-width: 400px;"
         >
-          <option value="ja">Japanese</option>
-          <option value="en">English</option>
-          <option value="zh">Chinese</option>
-          <option value="ko">Korean</option>
-          <option value="fr">French</option>
-          <option value="de">German</option>
-          <option value="es">Spanish</option>
+          <option value="ja">日本語</option>
+          <option value="en">英語</option>
+          <option value="zh">中国語</option>
+          <option value="ko">韓国語</option>
+          <option value="fr">フランス語</option>
+          <option value="de">ドイツ語</option>
+          <option value="es">スペイン語</option>
         </select>
       </div>
 
       {loading() ? (
         <div style="text-align: center; padding: 40px; border: 2px dashed var(--border);">
-          <p>Uploading...</p>
+          <p>アップロード中...</p>
         </div>
       ) : (
         <div style="text-align: center; padding: 40px; border: 2px dashed var(--border); position: relative; cursor: pointer;">
           <Show when={!authReady()}>
-            <p style="color: var(--accent); margin-bottom: 8px; font-weight: bold;">Initializing sign-in state...</p>
+            <p style="color: var(--accent); margin-bottom: 8px; font-weight: bold;">サインイン状態を初期化中...</p>
           </Show>
-          <p style="color: var(--text-muted); pointer-events: none;">Drag and drop or click to select PDF file</p>
+          <p style="color: var(--text-muted); pointer-events: none;">ドラッグ＆ドロップ、またはクリックしてPDFファイルを選択</p>
           <input 
             data-testid="pdf-file-input"
             type="file" 

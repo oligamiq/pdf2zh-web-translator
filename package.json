@@ -24,7 +24,8 @@
     "deploy:frontend": "npm --prefix frontend run deploy",
     "deploy": "npm run preflight && npm run deploy:worker && npm run deploy:frontend",
     "check:prod-bundle": "npm --prefix frontend run check:prod-bundle",
-    "verify": "npm run build && npm run check:prod-bundle && npm run test:e2e && npm run preflight",
+    "test:router": "./scripts/e2e-router-smoke.sh",
+    "verify": "npm run build && npm run check:prod-bundle && npm run test:e2e && npm run test:router && npm run preflight",
     "pc-api:build": "docker compose build pc-api",
     "pc-api:logs": "docker compose logs --tail=200 pc-api",
     "smoke:progress": "./scripts/e2e-progress-smoke.sh"

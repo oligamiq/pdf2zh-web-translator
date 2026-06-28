@@ -1,0 +1,3 @@
+# Internal Fallback Router
+
+To increase the stability of PDF translation jobs, `pdf2zh-web` implements an internal OpenAI-compatible proxy router. Instead of restarting an entire translation job when an LLM provider encounters a network error, timeout, or rate limit (HTTP 429 / 5xx), the router intercepts individual HTTP requests locally and gracefully falls back to the next configured provider. The active providers' statistics (total requests, successes, failures, rate limits, etc.) are reported periodically to the worker API, allowing for transparent usage tracking without losing translation progress.

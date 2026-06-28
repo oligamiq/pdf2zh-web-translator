@@ -1,0 +1,28 @@
+name = "pdftr"
+main = "src/index.ts"
+compatibility_date = "2024-04-05"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pdf2zh-db"
+database_id = "6c78dfca-f345-4a66-89a3-5fe72b1bb043"
+
+[[vpc_services]]
+binding = "PC_API_VPC"
+service_id = "019f02f0-2940-7b92-9fed-02b6a692f41f"
+remote = true
+[vars]
+CORS_ORIGIN = "https://pdftr.pages.dev"
+AUTH_MODE = "firebase" # Set to "firebase" in production
+FIREBASE_PROJECT_ID = "pdf2zh-tr"
+# Secrets (PROXY_SECRET, AGENT_TOKEN, etc.) should be set via:
+# wrangler secret put PROXY_SECRET
+# Or locally via .dev.vars
+PUBLIC_FALLBACK_LLM_ENABLED = "false"
+# PUBLIC_FALLBACK_LLM_SOURCE = "openaicompatible"
+# PUBLIC_FALLBACK_LLM_BASE_URL = "https://..."
+# PUBLIC_FALLBACK_LLM_MODEL = "..."
+
+PRIVATE_API_BASE_URL = "http://127.0.0.1:48341"
+PROXY_SECRET = "mock-proxy-secret"
+AGENT_TOKEN = "mock-agent-token"

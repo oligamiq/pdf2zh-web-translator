@@ -289,13 +289,22 @@ fi
 echo "--- Checking pc-api Docker Build ---"
 (
   cd "$V2_DIR"
-  echo "Building pc-api container..."
-  if ! docker compose -f "$COMPOSE_FILE" build pc-api > /dev/null 2>&1; then
-    echo "❌ pc-api Docker build failed."
-    docker compose -f "$COMPOSE_FILE" build pc-api
-    exit 1
+  if ! docker ps > /dev/null 2>&1; then
+    if [ "$STRICT_PREFLIGHT" = "1" ] || [ "$CI" = "1" ] || [ "$CI" = "true" ]; then
+      echo "❌ Docker is not accessible. (STRICT_PREFLIGHT or CI requires Docker access)"
+      exit 1
+    fi
+    echo "⚠️ pc-api Docker build skipped because Docker is not accessible."
+    echo "⚠️ (To fix, add your user to the docker group: sudo usermod -aG docker \$USER)"
+  else
+    echo "Building pc-api container..."
+    if ! docker compose -f "$COMPOSE_FILE" build pc-api > /dev/null 2>&1; then
+      echo "❌ pc-api Docker build failed."
+      docker compose -f "$COMPOSE_FILE" build pc-api
+      exit 1
+    fi
+    echo "✅ pc-api Docker build passed."
   fi
 )
-echo "✅ pc-api Docker build passed."
 
 echo "=== Production Preflight Passed ==="

@@ -62,7 +62,12 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}, forc
         throw new Error("Unauthorized (Firebase login expired or invalid)");
       }
       const errText = await response.text();
-      throw new Error(`API Error: ${response.status} - ${errText}`);
+      let msg = `API Error: ${response.status} - ${errText}`;
+      try {
+        const parsed = JSON.parse(errText);
+        if (parsed.error) msg = parsed.error;
+      } catch (e) {}
+      throw new Error(msg);
     }
     
     return response;
@@ -77,6 +82,14 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}, forc
 
 export async function checkHealth() {
   return apiFetch('/healthz').then(r => r.text());
+}
+
+export async function checkPcHealth() {
+  return apiFetch('/health/pc-api').then(r => r.json());
+}
+
+export async function getLimits() {
+  return apiFetch('/limits').then(r => r.json());
 }
 
 export async function getJobs() {
@@ -172,6 +185,68 @@ export async function downloadJob(id: string) {
   return apiFetch(`/jobs/${id}/download`);
 }
 
+export async function viewPdf(jobId: string, type: "dual" | "mono" = "dual") {
+  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
+  const publicJobs = JSON.parse(publicJobsStr);
+  const receipt = publicJobs[jobId];
+
+  // We should fetch even for public jobs to validate the PDF contents
+  // The user requirement says: "public/private両方確認", and "Blob URLを開く前に %PDF- を確認"
+  const urlPath = receipt 
+    ? `/public/jobs/${jobId}/download?type=${type}&receipt=${receipt}`
+    : `/jobs/${jobId}/download?type=${type}`;
+
+  const popup = window.open("about:blank", "_blank");
+  try {
+    const res = await apiFetch(urlPath);
+    
+    const contentType = res.headers.get("content-type") ?? "";
+    const blob = await res.blob();
+
+    if (!res.ok) {
+      const text = await blob.text().catch(() => "");
+      throw new Error(text || `Failed to load PDF: ${res.status}`);
+    }
+
+    const headBytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+    const headText = new TextDecoder().decode(headBytes);
+
+    if (!headText.startsWith("%PDF-")) {
+      const text = await blob.text().catch(() => "");
+      throw new Error(
+        `Downloaded file is not a PDF. status=${res.status}, content-type=${contentType}, size=${blob.size}, head=${JSON.stringify(headText)}, body=${text.slice(0, 500)}`
+      );
+    }
+
+    const pdfBlob = new Blob([blob], { type: "application/pdf" });
+    const url = URL.createObjectURL(pdfBlob);
+
+    if (popup) {
+      popup.location.href = url;
+    } else {
+      window.open(url, "_blank");
+    }
+
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (err) {
+    if (popup) popup.close();
+    throw err;
+  }
+}
+
+export async function deleteJob(id: string) {
+  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
+  const publicJobs = JSON.parse(publicJobsStr);
+  const receipt = publicJobs[id];
+  if (receipt) {
+    const res = await apiFetch(`/public/jobs/${id}?receipt=${receipt}`, { method: 'DELETE' }).then(r => r.json());
+    delete publicJobs[id];
+    localStorage.setItem('public_jobs', JSON.stringify(publicJobs));
+    return res;
+  }
+  return apiFetch(`/jobs/${id}`, { method: 'DELETE' }).then(r => r.json());
+}
+
 export interface ApiBasicSettings {
   target_language?: string;
   has_api_key?: boolean; // For legacy or general indicator, if needed
@@ -191,12 +266,17 @@ export async function updateApiBasicSettings(payload: { target_language?: string
 
 export interface ApiProvider {
   id: number;
-  provider_name: string;
+  display_name: string;
+  provider_name?: string; // legacy fallback
+  provider_type?: string;
   base_url?: string;
-  model_name?: string;
+  model?: string;
+  model_name?: string; // legacy fallback
   priority: number;
   enabled: boolean;
   has_api_key?: boolean;
+  timeout_seconds?: number;
+  reasoning_effort?: string;
 }
 
 export async function getApiProviders(): Promise<ApiProvider[]> {

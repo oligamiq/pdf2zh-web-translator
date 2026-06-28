@@ -1,6 +1,6 @@
-# pdf2zh Web System (V2)
+# PDF翻訳 Web Translator
 
-This is the V2 architecture of the pdf2zh Web UI.
+PDFをアップロードすると、翻訳済みPDFと対訳PDFを生成してダウンロードできるWebアプリです。
 
 ## Components
 
@@ -44,3 +44,15 @@ cd v2
 - **D1 State Isolation**: The test creates an isolated D1 state inside `.tmp/e2e-<timestamp>/wrangler-state` so past queued jobs do not interfere with tests.
 - **Agent Loop**: The background agent loop in `pc-api` is intentionally paused (`PC_AGENT_AUTOSTART=false`) during mock smoke tests so the test script can assert API claim endpoints deterministically. It runs normally during real conversion tests.
 - **No Cloudflared**: Cloudflared tunnels are not started in the mock E2E test; it communicates internally via loopback and Docker networking.
+
+## Source code
+
+https://github.com/oligamiq/pdf2zh-web-translator
+
+## License
+
+The original code in this repository is licensed under the MIT License.
+
+This project uses third-party open-source software, including AGPL-3.0 components such as pdf2zh-next. Those components are licensed by their respective copyright holders and may impose additional obligations.
+
+See THIRD_PARTY_NOTICES.md and the /licenses page for details.

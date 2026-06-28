@@ -74,19 +74,23 @@ test.describe('Job Details Auth & Retry', () => {
             id: 'attempt-1',
             job_id: 'job-123',
             provider_order: 1,
-            display_name: 'Provider 1 (Ollama)',
+            display_name: 'Provider 1',
             model: 'llama3',
-            status: 'failed',
-            http_status: 401,
-            error_message: 'Unauthorized'
+            total_requests: 1,
+            failure_count: 1,
+            last_http_status: 401,
+            last_error: 'Unauthorized',
+            rate_limit_count: 0
           },
           {
             id: 'attempt-2',
             job_id: 'job-123',
             provider_order: 2,
-            display_name: 'Provider 2 (OpenAI)',
+            display_name: 'Provider 2',
             model: 'gpt-4o',
-            status: 'success'
+            total_requests: 1,
+            success_count: 1,
+            failure_count: 0
           }
         ]),
       });
@@ -96,17 +100,17 @@ test.describe('Job Details Auth & Retry', () => {
     await page.goto('/jobs/job-123');
 
     // 3. Immediately it should show Loading job details... or Checking sign-in...
-    await expect(page.getByText('Checking sign-in...').or(page.getByText('Loading job details...'))).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('サインイン確認中...').or(page.getByText('詳細を読み込み中...'))).toBeVisible({ timeout: 10000 });
 
     // 4. Wait for job details to load successfully (authReady -> fetch -> 401 -> retry -> 200)
     await expect(page.getByText('retry-test.pdf')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('text=COMPLETED')).toBeVisible();
+    await expect(page.locator('text=完了')).toBeVisible();
 
     // 5. Check if attempts are displayed
-    await expect(page.getByText('API Provider Attempts')).toBeVisible();
-    await expect(page.getByText('Provider 1 (Ollama)')).toBeVisible();
-    await expect(page.getByText('Provider 2 (OpenAI)')).toBeVisible();
-    await expect(page.getByText('Error (HTTP 401): Unauthorized')).toBeVisible();
+    await expect(page.getByText('APIルーティング')).toBeVisible();
+    await expect(page.getByText('Provider 1')).toBeVisible();
+    await expect(page.getByText('Provider 2')).toBeVisible();
+    await expect(page.getByText('HTTP 401')).toBeVisible();
 
     // The fetch should have happened exactly twice (1 fail + 1 retry)
     expect(fetchCount).toBe(2);
