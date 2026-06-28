@@ -16,12 +16,14 @@
     <meta property="og:description" content="PDFをアップロードすると、翻訳済みPDFと対訳PDFを生成してダウンロードできるWebアプリです。" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://pdftr.pages.dev" />
-    <meta property="og:image" content="https://pdftr.pages.dev/og-image.svg" />
+    <meta property="og:image" content="https://pdftr.pages.dev/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="PDF翻訳 - 翻訳済みPDFと対訳PDFを作成" />
     <meta name="twitter:description" content="PDFをアップロードすると、翻訳済みPDFと対訳PDFを生成してダウンロードできるWebアプリです。" />
-    <meta name="twitter:image" content="https://pdftr.pages.dev/og-image.svg" />
-    
+    <meta name="twitter:image" content="https://pdftr.pages.dev/og-image.png" />
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -32,12 +34,34 @@
       "operatingSystem": "Web",
       "description": "PDFをアップロードすると、翻訳済みPDFと対訳PDFを生成してダウンロードできるWebアプリです。",
       "license": "https://github.com/oligamiq/pdf2zh-web-translator/blob/main/LICENSE",
-      "codeRepository": "https://github.com/oligamiq/pdf2zh-web-translator"
+      "codeRepository": "https://github.com/oligamiq/pdf2zh-web-translator",
+      "inLanguage": "ja-JP",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "JPY"
+      }
     }
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main>
+        <h1>PDF翻訳</h1>
+        <p>PDFをアップロードすると、翻訳済みPDFと対訳PDFを生成してダウンロードできます。</p>
+        <p>ゲスト利用とGoogleログインに対応したPDF翻訳Webアプリです。</p>
+        <ul>
+          <li>翻訳済みPDFと対訳PDFを作成</li>
+          <li>ゲスト利用に対応</li>
+          <li>APIキー保存とAdvanced API Routingに対応</li>
+        </ul>
+        <p>
+          <a href="/about">利用制限と注意事項</a>
+          <a href="/licenses">ライセンス</a>
+        </p>
+      </main>
+    </div>
     <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>
