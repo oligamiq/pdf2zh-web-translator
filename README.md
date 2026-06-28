@@ -1,4 +1,6 @@
-# PDF翻訳 (pdf2zh-web-translator)
+# PDF翻訳 Web Translator
+
+[![CI](https://github.com/oligamiq/pdf2zh-web-translator/actions/workflows/ci.yml/badge.svg)](https://github.com/oligamiq/pdf2zh-web-translator/actions/workflows/ci.yml)
 
 PDFをアップロードすると、翻訳済みPDFと対訳PDFを生成してダウンロードできるWebアプリです。
 内部で [pdf2zh-next](https://github.com/oligamiq/pdf2zh-next) 等を利用し、各社のLLM APIを通じて高品質な翻訳を行います。

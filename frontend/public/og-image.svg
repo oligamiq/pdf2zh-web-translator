@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <rect width="1200" height="630" fill="#f8fafc" />
+  <rect width="1200" height="630" fill="url(#grad)" />
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e0f2fe;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#bfdbfe;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <text x="600" y="280" font-family="sans-serif" font-size="80" font-weight="bold" fill="#0f172a" text-anchor="middle">
+    PDF翻訳
+  </text>
+  
+  <text x="600" y="400" font-family="sans-serif" font-size="40" fill="#334155" text-anchor="middle">
+    翻訳済みPDFと対訳PDFを作成
+  </text>
+  
+  <path d="M560 140 h80 v80 h-80 z" fill="#2563eb" rx="16" ry="16" />
+</svg>
