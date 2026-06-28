@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:e2e": "vite --host 127.0.0.1 --mode e2e",
     "build": "tsc -b && vite build && node ../scripts/prerender-static-pages.mjs",
     "preview": "vite preview",
     "test:e2e": "playwright test",
