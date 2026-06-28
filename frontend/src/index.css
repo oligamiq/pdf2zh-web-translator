@@ -852,6 +852,10 @@ th { color: var(--text-muted); font-weight: normal; }
   }
 
   .upload-card {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
     padding: 1rem !important;
   }
 
@@ -866,15 +870,20 @@ th { color: var(--text-muted); font-weight: normal; }
 
   .mobile-file-picker {
     display: block;
+    box-sizing: border-box;
     width: 100%;
+    max-width: 100%;
     margin: 0.75rem 0 1rem;
   }
 
   .primary-file-button,
-  .file-select-button {
+  .file-select-button,
+  label.primary-file-button {
+    box-sizing: border-box;
     width: 100%;
+    max-width: 100%;
     min-height: 4rem;
-    padding: 1rem 1.25rem;
+    padding: 1rem;
     border-radius: 1rem;
     font-size: 1.15rem;
     font-weight: 800;

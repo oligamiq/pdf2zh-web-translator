@@ -221,7 +221,7 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
         </div>
       </Show>
 
-      <div class="panel upload-card" style="text-align: left; position: relative; margin-bottom: 24px;">
+      <div class="panel upload-card" data-testid="upload-card" style="text-align: left; position: relative; margin-bottom: 24px;">
         <h3 class="upload-title" style="margin-top: 0;">アップロード</h3>
         {error() && <div style="color: var(--danger); margin-bottom: 16px; white-space: pre-wrap;">{error()}</div>}
 

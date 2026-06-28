@@ -162,22 +162,47 @@ test.describe('Mobile Layout', () => {
     expect(loginBox!.x + loginBox!.width).toBeLessThanOrEqual(viewportWidth + 1);
   });
 
-  test('mobile file select button is prominent above the fold', async ({ page }) => {
+  test('mobile file select button stays inside upload card', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await setupDefaultApiMocks(page);
 
     await page.goto('/');
 
+    const card = page.getByTestId('upload-card');
     const button = page.getByTestId('file-select-button');
+
+    await expect(card).toBeVisible();
     await expect(button).toBeVisible();
 
-    const box = await button.boundingBox();
-    const viewportHeight = await page.evaluate(() => window.innerHeight);
+    const cardBox = await card.boundingBox();
+    const buttonBox = await button.boundingBox();
+    const viewportWidth = await page.evaluate(() => window.innerWidth);
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
 
-    expect(box!.y).toBeLessThan(viewportHeight * 0.7);
-    expect(box!.width).toBeGreaterThan(280);
-    expect(box!.height).toBeGreaterThanOrEqual(56);
+    expect(scrollWidth).toBeLessThanOrEqual(viewportWidth + 1);
+
+    expect(buttonBox!.x).toBeGreaterThanOrEqual(cardBox!.x);
+    expect(buttonBox!.x + buttonBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width);
+    expect(buttonBox!.width).toBeGreaterThan(cardBox!.width * 0.75);
+    expect(buttonBox!.height).toBeGreaterThanOrEqual(56);
   });
+
+  for (const width of [360, 390, 430]) {
+    test(`mobile upload CTA stays inside card at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await setupDefaultApiMocks(page);
+      await page.goto('/');
+
+      const cardBox = await page.getByTestId('upload-card').boundingBox();
+      const buttonBox = await page.getByTestId('file-select-button').boundingBox();
+      const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+      const viewportWidth = await page.evaluate(() => window.innerWidth);
+
+      expect(scrollWidth).toBeLessThanOrEqual(viewportWidth + 1);
+      expect(buttonBox!.x).toBeGreaterThanOrEqual(cardBox!.x);
+      expect(buttonBox!.x + buttonBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width);
+    });
+  }
 
   test('guest login button can be retried after popup cancellation', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
