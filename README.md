@@ -1,58 +1,80 @@
-# PDF翻訳 Web Translator
+# PDF翻訳 (pdf2zh-web-translator)
 
 PDFをアップロードすると、翻訳済みPDFと対訳PDFを生成してダウンロードできるWebアプリです。
+内部で [pdf2zh-next](https://github.com/oligamiq/pdf2zh-next) 等を利用し、各社のLLM APIを通じて高品質な翻訳を行います。
 
-## Components
+## リンク
 
-1. **Frontend (`v2/frontend`)**: SolidJS + Vite + TypeScript application deployed to Cloudflare Pages.
-2. **Worker API (`v2/worker`)**: Cloudflare Worker acting as the public API Gateway, using D1 for state and Firebase Auth for verification.
-3. **PC API & Agent (`v2/pc-api`)**: Private internal API running in Docker on the host machine. Polls the Worker for jobs and runs `pdf2zh`.
+* **公開URL**: https://pdftr.pages.dev
+* **ソースコード**: https://github.com/oligamiq/pdf2zh-web-translator
 
-## Quick Start (Frontend)
+## 構成
 
-1. Navigate to `v2/frontend`.
-2. Copy `.env.example` to `.env` and fill in your Cloudflare Worker URL and Firebase credentials.
-3. Install dependencies: `npm install`
-4. Run development server: `npm run dev`
+このリポジトリは以下の3つのコンポーネントで構成されるモノレポです：
 
-## Quick Start (Backend)
+1. **frontend**: Cloudflare Pages でホストされるWeb UI。React(Solid.js) + Vite。一部ページ(`/about`, `/licenses`)はSSGで静的生成されます。
+2. **worker**: Cloudflare Workers + D1 で動作するAPIサーバー。ユーザー管理、ジョブ管理、設定管理を行います。
+3. **pc-api-python**: 実際のPDF翻訳処理を担当するPythonバックエンド。Cloudflare Accessを通してWorkerから非同期ジョブを受け取ります。
 
-1. Navigate to `v2/worker`.
-2. Configure `wrangler.toml` and run `npm install`.
-3. Apply D1 schema: `wrangler d1 execute pdf2zh-db --local --file=./schema.sql` (or remote).
-4. Run local worker: `npm run dev`
+## ローカル開発手順
 
-## Quick Start (PC Agent)
+### 必須環境
+- Node.js 24+
+- Python 3.11+
+- Wrangler CLI
 
-1. Build and run via `docker-compose up -d` in `v2/` directory.
+### セットアップ
 
-## E2E Testing
+1. **リポジトリのクローン**
+   ```bash
+   git clone https://github.com/oligamiq/pdf2zh-web-translator.git
+   cd pdf2zh-web-translator
+   npm ci
+   ```
 
-The project provides two distinct E2E smoke tests with clear roles:
-- `scripts/e2e-smoke.sh`: Fast mock E2E suitable for CI. It verifies API wiring, permissions, and database operations but does not wait for a full `pdf2zh_next` conversion.
-- `scripts/e2e-real-conversion-smoke.sh`: Real conversion smoke suitable for pre-production or manual verification. It actually triggers `pdf2zh_next` and validates the resulting ZIP/PDF outputs. This test may take longer.
+2. **環境変数の設定**
+   各ディレクトリの `.env.example` をコピーして `.env` または `.dev.vars` を作成します。
+   **注意: 絶対に実APIキーやシークレットをコミットしないでください。**
+   
+   * `worker/.dev.vars`:
+     ```
+     ENVIRONMENT=development
+     CORS_ORIGIN=http://localhost:5173
+     AUTH_MODE=mock
+     ```
+   * `pc-api-python/.env`:
+     ```
+     ENVIRONMENT=development
+     WORKER_API_BASE_URL=http://localhost:8787
+     AGENT_TOKEN=mock_agent_token
+     ```
+   * `frontend/.env.local`:
+     ```
+     VITE_API_BASE_URL=http://localhost:8787
+     ```
 
-To run the mock smoke test:
+3. **ローカルサーバーの起動**
+   ```bash
+   npm run dev
+   ```
+   これで frontend, worker, pc-api-python 全てが連動して起動します。
+
+## デプロイ手順
+
+本番環境(Cloudflare)へのデプロイは以下のコマンドで行います。事前に `wrangler login` が必要です。
+
 ```bash
-cd v2
-./scripts/e2e-smoke.sh
+# 全体をデプロイ
+npm run deploy
+
+# 個別にデプロイ
+npm run deploy:worker
+npm run deploy:frontend
 ```
 
-**E2E Testing Architecture & Constraints:**
-- **Secret Isolation**: E2E does *not* depend on your production or local `.env` / `.dev.vars` secrets. The scripts generate temporary `PROXY_SECRET` and `AGENT_TOKEN` dynamically.
-- **.dev.vars Handling**: The scripts temporarily swap out your `worker/.dev.vars` during the test and guarantee its restoration via a `trap` hook.
-- **D1 State Isolation**: The test creates an isolated D1 state inside `.tmp/e2e-<timestamp>/wrangler-state` so past queued jobs do not interfere with tests.
-- **Agent Loop**: The background agent loop in `pc-api` is intentionally paused (`PC_AGENT_AUTOSTART=false`) during mock smoke tests so the test script can assert API claim endpoints deterministically. It runs normally during real conversion tests.
-- **No Cloudflared**: Cloudflared tunnels are not started in the mock E2E test; it communicates internally via loopback and Docker networking.
+## ライセンス注意
 
-## Source code
+このアプリ自体の独自コードは **MIT License** として提供します。
+ただし、変換処理の中核として利用している `pdf2zh-next` は **AGPL-3.0** ライセンスで提供されています。
 
-https://github.com/oligamiq/pdf2zh-web-translator
-
-## License
-
-The original code in this repository is licensed under the MIT License.
-
-This project uses third-party open-source software, including AGPL-3.0 components such as pdf2zh-next. Those components are licensed by their respective copyright holders and may impose additional obligations.
-
-See THIRD_PARTY_NOTICES.md and the /licenses page for details.
+ご自身でこのアプリをホストして公開サービスとして提供する場合、バックエンド処理がネットワーク経由で利用されるため、AGPL-3.0の条項に基づきバックエンド側のソースコード（修正事項含む）を利用者に公開する義務が生じる可能性があります。詳細なライセンス情報は `/licenses` ページまたは `THIRD_PARTY_NOTICES.md` を参照してください。

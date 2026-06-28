@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+        
+      - name: Check SSG generated files
+        run: |
+          test -f frontend/dist/about/index.html
+          test -f frontend/dist/about.html
+          test -f frontend/dist/licenses/index.html
+          test -f frontend/dist/licenses.html
+          test -f frontend/dist/sitemap.xml
+          test -f frontend/dist/robots.txt
+          
+      - name: Check AGPL and GitHub references in licenses
+        run: |
+          grep "AGPL-3.0" frontend/dist/licenses/index.html
+          grep "pdf2zh-next" frontend/dist/licenses/index.html
+          grep "github.com/oligamiq/pdf2zh-web-translator" frontend/dist/licenses/index.html
+          
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+        
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
