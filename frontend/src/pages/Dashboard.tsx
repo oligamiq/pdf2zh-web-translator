@@ -114,8 +114,9 @@ export default function Dashboard() {
                 when={currentUser()}
                 fallback={
                   <div style="position: relative;">
-                    <button class="btn login-button" onClick={handleLogin} disabled={signingIn()}>
-                      {signingIn() ? 'ログイン中...' : 'Googleでログイン'}
+                    <button class="btn guest-auth-button" data-testid="guest-auth-button" onClick={handleLogin} disabled={signingIn()}>
+                      <span class="guest-auth-chip" style={{ background: "var(--accent)", color: "white" }}>ゲスト</span>
+                      <span class="guest-auth-label">{signingIn() ? 'ログイン中...' : 'Googleログイン'}</span>
                     </button>
                     {loginError() && <div style="position: absolute; top: 100%; right: 0; color: var(--danger); margin-top: 4px; font-size: 14px; white-space: nowrap;">{loginError()}</div>}
                   </div>
@@ -173,13 +174,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <Show when={!currentUser()}>
-          <div class="header-sub">
-            <span class="account-email" style="color: var(--accent); font-weight: bold; padding: 0.5rem 0.75rem; border: none; background: transparent;">ゲスト利用中</span>
-            <A href="/about" style="color: var(--text-muted); font-size: 0.9rem; text-decoration: underline; padding: 0.5rem 0.75rem;">利用制限と注意事項</A>
-            <A href="/licenses" style="color: var(--text-muted); font-size: 0.9rem; text-decoration: underline; padding: 0.5rem 0.75rem; margin-right: 0.5rem;">ライセンス</A>
-          </div>
-        </Show>
+
       </header>
       
       <p class="site-description" style="margin-top: 0;">

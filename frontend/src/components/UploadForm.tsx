@@ -295,6 +295,8 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
             }
           </p>
           <A href="/about" style="color: var(--accent); text-decoration: none; font-weight: bold;">&rarr; 利用制限と注意事項</A>
+          <span style="margin: 0 8px; color: var(--border);">|</span>
+          <A href="/licenses" style="color: var(--accent); text-decoration: none; font-weight: bold;">ライセンス</A>
         </details>
       </Show>
 

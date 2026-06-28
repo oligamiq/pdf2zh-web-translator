@@ -97,9 +97,6 @@ test.describe('Public Upload UI', () => {
 
     await page.goto('/');
 
-    // Check Guest mode header
-    await expect(page.locator('span', { hasText: 'ゲスト利用中' })).toBeVisible();
-
     // Check Guest mode info box
     await expect(page.locator('text=ゲスト利用').first()).toBeVisible();
 

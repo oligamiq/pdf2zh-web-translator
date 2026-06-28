@@ -146,13 +146,14 @@ test.describe('Mobile Layout', () => {
     await page.goto('/');
 
     const brand = page.getByTestId('brand-title');
-    const login = page.getByRole('button', { name: /Googleでログイン/ });
+    const guestAuth = page.getByTestId('guest-auth-button');
 
     await expect(brand).toBeVisible();
-    await expect(login).toBeVisible();
+    await expect(guestAuth).toBeVisible();
+    await expect(guestAuth).toContainText(/ゲスト|ログイン/);
 
     const brandBox = await brand.boundingBox();
-    const loginBox = await login.boundingBox();
+    const loginBox = await guestAuth.boundingBox();
     const viewportWidth = await page.evaluate(() => window.innerWidth);
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
 

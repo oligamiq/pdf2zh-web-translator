@@ -733,6 +733,26 @@ th { color: var(--text-muted); font-weight: normal; }
   justify-content: flex-end;
 }
 
+.guest-auth-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+  max-width: 52vw;
+  padding: 0.4rem 0.75rem;
+}
+
+.guest-auth-chip {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  opacity: 0.9;
+}
+
+.guest-auth-label {
+  font-weight: 700;
+}
+
 .turnstile-container {
   max-width: 100%;
   overflow: hidden;
@@ -743,6 +763,15 @@ th { color: var(--text-muted); font-weight: normal; }
 }
 
 @media (max-width: 640px) {
+  .guest-auth-button {
+    max-width: 48vw;
+    padding-inline: 0.7rem;
+    font-size: 0.95rem;
+  }
+
+  .guest-auth-chip {
+    font-size: 0.7rem;
+  }
   .app-shell,
   .page,
   .main-content {

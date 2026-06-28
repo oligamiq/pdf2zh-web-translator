@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { setupAuthenticatedUser } from './helpers/auth';
+import { setupDefaultApiMocks } from './helpers/api';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -46,8 +47,29 @@ test.describe('Licenses page', () => {
     await expect(page).toHaveURL(/.*\/licenses/);
   });
 
-  test('Can navigate to licenses from guest account menu', async ({ page }) => {
+  test('Can navigate to licenses from guest upload form', async ({ page }) => {
+    await setupDefaultApiMocks(page);
+    await page.route('**/limits', async route => {
+      return route.fulfill({
+        json: {
+          scope: 'public',
+          pdf_max_bytes: 5 * 1024 * 1024,
+          jobs_per_day: 3,
+          public_job_expiry_hours: 24
+        }
+      });
+    });
     await page.goto('/');
+    
+    // Wait for limits to load
+    await expect(page.locator('text=ゲスト利用').first()).toBeVisible();
+    
+    // The link might be in a collapsed details, so click summary first if present
+    const summary = page.locator('summary:has-text("ゲスト利用")');
+    if (await summary.isVisible()) {
+      await summary.click();
+    }
+    
     await page.click('a:has-text("ライセンス")');
     await expect(page).toHaveURL(/.*\/licenses/);
   });

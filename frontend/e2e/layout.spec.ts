@@ -334,6 +334,6 @@ test.describe('Layout & Long Text Resistance', () => {
     // The Guest mode will just show the login button again if currentUser is updated,
     // but the API call is a good enough check for now.
     // We can also check if the button changed to "Sign in with Google".
-    await expect(page.getByRole('button', { name: 'Googleでログイン' })).toBeVisible();
+    await expect(page.getByTestId('guest-auth-button')).toBeVisible();
   });
 });
