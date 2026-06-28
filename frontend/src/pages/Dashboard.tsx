@@ -102,7 +102,7 @@ export default function Dashboard() {
       <header class="app-header">
         <div class="header-main">
           <div class="brand">
-            <h1 style="margin: 0;">PDF翻訳</h1>
+            <h1 class="brand-title" style="margin: 0;">PDF翻訳</h1>
           </div>
 
           <div class="account-actions">
@@ -118,7 +118,7 @@ export default function Dashboard() {
                     <A href="/about" style="color: var(--text-muted); font-size: 0.9rem; text-decoration: underline; padding: 0.5rem 0.75rem;">利用制限と注意事項</A>
                     <A href="/licenses" style="color: var(--text-muted); font-size: 0.9rem; text-decoration: underline; padding: 0.5rem 0.75rem; margin-right: 0.5rem;">ライセンス</A>
                     <div style="position: relative;">
-                      <button class="btn" onClick={handleLogin} disabled={signingIn()}>
+                      <button class="btn login-button" onClick={handleLogin} disabled={signingIn()}>
                         {signingIn() ? 'ログイン中...' : 'Googleでログイン'}
                       </button>
                       {loginError() && <div style="position: absolute; top: 100%; right: 0; color: var(--danger); margin-top: 4px; font-size: 14px; white-space: nowrap;">{loginError()}</div>}

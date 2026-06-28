@@ -239,7 +239,7 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
           <A href="/about" style="color: var(--accent); text-decoration: none; font-weight: bold;">&rarr; 利用制限と注意事項</A>
           
           <Show when={limits().scope === 'public'}>
-            <div id="turnstile-container" style="margin-top: 16px;"></div>
+            <div id="turnstile-container" class="turnstile-container" style="margin-top: 16px;"></div>
             <Show when={turnstileToken()}>
               <div data-testid="turnstile-ready" style="display: none;"></div>
             </Show>

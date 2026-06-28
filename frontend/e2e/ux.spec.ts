@@ -113,3 +113,27 @@ test.describe('UX Improvements', () => {
     await expect(page.getByText('ジョブは登録できますが、サーバー復旧まで変換は開始されません')).toBeVisible();
   });
 });
+
+test.describe('Mobile Layout', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test.beforeEach(async ({ page }) => {
+    await setupApiGuard(page);
+    await setupDefaultApiMocks(page);
+    await page.route('**/health/pc-api', async route => {
+      await route.fulfill({ status: 200, body: JSON.stringify({ ok: true, status: 'online' }) });
+    });
+  });
+
+  test('should not have horizontal scroll and header elements should be visible in guest mode', async ({ page }) => {
+    // Explicitly do NOT set up authenticated user (guest mode)
+    await page.goto('/');
+
+    await expect(page.getByText('PDF翻訳')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Googleでログイン/ })).toBeVisible();
+
+    const bodyWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    const viewportWidth = await page.evaluate(() => window.innerWidth);
+    expect(bodyWidth).toBeLessThanOrEqual(viewportWidth + 1);
+  });
+});
