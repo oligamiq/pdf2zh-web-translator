@@ -115,25 +115,50 @@ test.describe('UX Improvements', () => {
 });
 
 test.describe('Mobile Layout', () => {
-  test.use({ viewport: { width: 390, height: 844 } });
-
-  test.beforeEach(async ({ page }) => {
-    await setupApiGuard(page);
+  test('logged-in mobile header keeps account button at top right', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setupAuthenticatedUser(page);
     await setupDefaultApiMocks(page);
-    await page.route('**/health/pc-api', async route => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ ok: true, status: 'online' }) });
-    });
-  });
 
-  test('should not have horizontal scroll and header elements should be visible in guest mode', async ({ page }) => {
-    // Explicitly do NOT set up authenticated user (guest mode)
     await page.goto('/');
 
-    await expect(page.getByText('PDF翻訳')).toBeVisible();
-    await expect(page.getByRole('button', { name: /Googleでログイン/ })).toBeVisible();
+    const brand = page.getByTestId('brand-title');
+    const account = page.getByTestId('account-menu-button');
 
-    const bodyWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    await expect(brand).toBeVisible();
+    await expect(account).toBeVisible();
+
+    const brandBox = await brand.boundingBox();
+    const accountBox = await account.boundingBox();
     const viewportWidth = await page.evaluate(() => window.innerWidth);
-    expect(bodyWidth).toBeLessThanOrEqual(viewportWidth + 1);
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+
+    expect(scrollWidth).toBeLessThanOrEqual(viewportWidth + 1);
+
+    expect(brandBox!.x).toBeLessThan(40);
+    expect(accountBox!.x + accountBox!.width).toBeGreaterThan(viewportWidth - 40);
+    expect(accountBox!.y).toBeLessThan(brandBox!.y + brandBox!.height + 8);
+  });
+
+  test('guest mobile header keeps login button in top row', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setupDefaultApiMocks(page);
+
+    await page.goto('/');
+
+    const brand = page.getByTestId('brand-title');
+    const login = page.getByRole('button', { name: /Googleでログイン/ });
+
+    await expect(brand).toBeVisible();
+    await expect(login).toBeVisible();
+
+    const brandBox = await brand.boundingBox();
+    const loginBox = await login.boundingBox();
+    const viewportWidth = await page.evaluate(() => window.innerWidth);
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+
+    expect(scrollWidth).toBeLessThanOrEqual(viewportWidth + 1);
+    expect(brandBox!.x).toBeLessThan(40);
+    expect(loginBox!.x + loginBox!.width).toBeLessThanOrEqual(viewportWidth + 1);
   });
 });

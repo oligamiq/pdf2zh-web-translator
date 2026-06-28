@@ -102,10 +102,10 @@ export default function Dashboard() {
       <header class="app-header">
         <div class="header-main">
           <div class="brand">
-            <h1 class="brand-title" style="margin: 0;">PDF翻訳</h1>
+            <h1 class="brand-title" style="margin: 0;" data-testid="brand-title">PDF翻訳</h1>
           </div>
 
-          <div class="account-actions">
+          <div class="header-auth">
             <Show
               when={authReady()}
               fallback={<span style="opacity: 0.65; font-size: 0.9rem;">Checking sign-in...</span>}
@@ -113,17 +113,12 @@ export default function Dashboard() {
               <Show
                 when={currentUser()}
                 fallback={
-                  <>
-                    <span class="account-email" style="color: var(--accent); font-weight: bold; padding: 0.5rem 0.75rem; border: none; background: transparent;">ゲスト利用中</span>
-                    <A href="/about" style="color: var(--text-muted); font-size: 0.9rem; text-decoration: underline; padding: 0.5rem 0.75rem;">利用制限と注意事項</A>
-                    <A href="/licenses" style="color: var(--text-muted); font-size: 0.9rem; text-decoration: underline; padding: 0.5rem 0.75rem; margin-right: 0.5rem;">ライセンス</A>
-                    <div style="position: relative;">
-                      <button class="btn login-button" onClick={handleLogin} disabled={signingIn()}>
-                        {signingIn() ? 'ログイン中...' : 'Googleでログイン'}
-                      </button>
-                      {loginError() && <div style="position: absolute; top: 100%; right: 0; color: var(--danger); margin-top: 4px; font-size: 14px; white-space: nowrap;">{loginError()}</div>}
-                    </div>
-                  </>
+                  <div style="position: relative;">
+                    <button class="btn login-button" onClick={handleLogin} disabled={signingIn()}>
+                      {signingIn() ? 'ログイン中...' : 'Googleでログイン'}
+                    </button>
+                    {loginError() && <div style="position: absolute; top: 100%; right: 0; color: var(--danger); margin-top: 4px; font-size: 14px; white-space: nowrap;">{loginError()}</div>}
+                  </div>
                 }
               >
                 {(u) => (
@@ -166,7 +161,7 @@ export default function Dashboard() {
                           ライセンス
                         </A>
 
-                        <button type="button" class="text-danger" role="menuitem" onClick={() => { setAccountMenuOpen(false); handleLogout(); }}>
+                        <button class="btn btn-danger signout-btn" onClick={handleLogout} role="menuitem">
                           ログアウト
                         </button>
                       </div>
@@ -177,6 +172,14 @@ export default function Dashboard() {
             </Show>
           </div>
         </div>
+
+        <Show when={!currentUser()}>
+          <div class="header-sub">
+            <span class="account-email" style="color: var(--accent); font-weight: bold; padding: 0.5rem 0.75rem; border: none; background: transparent;">ゲスト利用中</span>
+            <A href="/about" style="color: var(--text-muted); font-size: 0.9rem; text-decoration: underline; padding: 0.5rem 0.75rem;">利用制限と注意事項</A>
+            <A href="/licenses" style="color: var(--text-muted); font-size: 0.9rem; text-decoration: underline; padding: 0.5rem 0.75rem; margin-right: 0.5rem;">ライセンス</A>
+          </div>
+        </Show>
 
         <div class="status-row">
           <span>API状態: <strong style="color: var(--text);">{health()}</strong></span>

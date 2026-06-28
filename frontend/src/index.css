@@ -71,9 +71,9 @@ a:hover { text-decoration: underline; }
 
 .header-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  gap: 1rem;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .brand {
@@ -721,8 +721,16 @@ th { color: var(--text-muted); font-weight: normal; }
   white-space: nowrap;
   word-break: keep-all;
   overflow-wrap: normal;
-  line-height: 1.1;
+  line-height: 1.05;
   font-size: clamp(2rem, 9vw, 3rem);
+}
+
+.account-actions,
+.guest-actions,
+.header-auth {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .turnstile-container {
@@ -735,39 +743,6 @@ th { color: var(--text-muted); font-weight: normal; }
 }
 
 @media (max-width: 640px) {
-  .brand-title {
-    font-size: clamp(2rem, 10vw, 2.75rem);
-  }
-
-  .app-header {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.75rem;
-  }
-
-  .header-main {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.75rem;
-  }
-
-  .header-actions,
-  .guest-actions,
-  .account-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 0.5rem 0.75rem;
-  }
-
-  .login-button {
-    width: 100%;
-    justify-content: center;
-  }
-
   .app-shell,
   .page,
   .main-content {
@@ -775,6 +750,54 @@ th { color: var(--text-muted); font-weight: normal; }
     max-width: none;
     padding-inline: 1rem;
     box-sizing: border-box;
+  }
+
+  .header-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .brand-title {
+    font-size: clamp(1.75rem, 8vw, 2.5rem);
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .account-actions,
+  .guest-actions,
+  .header-auth {
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+  }
+
+  .account-menu-button,
+  .account-icon-button {
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: 0 0 auto;
+  }
+
+  .login-button {
+    width: auto;
+    max-width: 52vw;
+    white-space: nowrap;
+    padding-inline: 0.9rem;
+    font-size: 0.95rem;
+  }
+
+  .header-links,
+  .header-sub,
+  .status-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
   }
 
   .card,
