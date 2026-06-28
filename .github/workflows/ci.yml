@@ -19,6 +19,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
       - name: Build project
         run: npm run build
         
@@ -36,9 +47,6 @@ jobs:
           grep "AGPL-3.0" frontend/dist/licenses/index.html
           grep "pdf2zh-next" frontend/dist/licenses/index.html
           grep "github.com/oligamiq/pdf2zh-web-translator" frontend/dist/licenses/index.html
-          
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
         
       - name: Run E2E tests
         run: npm run test:e2e
