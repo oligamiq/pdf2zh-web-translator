@@ -204,31 +204,64 @@ test.describe('Mobile Layout', () => {
     });
   }
 
-  test('guest login button can be retried after popup cancellation', async ({ page }) => {
+  test('guest login button recovers after popup cancellation (async reject)', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await setupDefaultApiMocks(page);
+
+    await page.addInitScript(() => {
+      (window as any).__e2e_simulate_login_error = {
+        code: 'auth/popup-closed-by-user',
+        delayMs: 500,
+      };
+    });
 
     await page.goto('/');
 
     const login = page.getByTestId('guest-auth-button');
     await expect(login).toBeEnabled();
 
-    // Set up mock to throw cancelled error
-    await page.evaluate(() => {
-      (window as any).__e2e_simulate_login_error = 'auth/popup-closed-by-user';
+    await login.click();
+    await expect(login).toBeDisabled();
+
+    // Should become enabled again after delay
+    await expect(login).toBeEnabled({ timeout: 5000 });
+
+    // Should be clickable again
+    await login.click();
+    await expect(login).toBeDisabled();
+  });
+
+  test('guest login button recovers after popup cancellation on focus return', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setupDefaultApiMocks(page);
+
+    await page.addInitScript(() => {
+      (window as any).__e2e_simulate_login_hang = true;
     });
 
+    await page.goto('/');
+
+    const login = page.getByTestId('guest-auth-button');
+    await expect(login).toBeEnabled();
+
     await login.click();
+    await expect(login).toBeDisabled();
+
+    // Simulate focus return after user closes the popup externally
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('focus'));
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => 'visible',
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
 
     // Should become enabled again
     await expect(login).toBeEnabled({ timeout: 5000 });
 
-    // Set up mock to succeed next time
-    await page.evaluate(() => {
-      (window as any).__e2e_simulate_login_error = null;
-    });
-
+    // Should be clickable again
     await login.click();
-    // After successful mock login, it might disappear or change state, but we mainly check it could be clicked again
+    await expect(login).toBeDisabled();
   });
 });

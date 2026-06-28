@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup, Show } from 'solid-js';
+import { createSignal, onMount, onCleanup, Show, createEffect } from 'solid-js';
 import { checkHealth, checkPcHealth, logout } from '../api';
 import { A } from '@solidjs/router';
 import JobList from '../components/JobList';
@@ -11,6 +11,7 @@ export default function Dashboard() {
   const [pcHealth, setPcHealth] = createSignal<{ok: boolean, status: string, message?: string} | null>(null);
   const [loginError, setLoginError] = createSignal<string>('');
   const [signingIn, setSigningIn] = createSignal(false);
+  const [signingInStartedAt, setSigningInStartedAt] = createSignal(0);
   const [refreshFlag, setRefreshFlag] = createSignal(0);
   const [accountMenuOpen, setAccountMenuOpen] = createSignal(false);
   let accountMenuRef: HTMLDivElement | undefined;
@@ -62,16 +63,49 @@ export default function Dashboard() {
     // After logout, user stays on Dashboard in Guest mode
   };
 
+  createEffect(() => {
+    const resetIfStillSigningIn = () => {
+      if (signingIn() && Date.now() - signingInStartedAt() > 1500) {
+        setSigningIn(false);
+      }
+    };
+
+    window.addEventListener('focus', resetIfStillSigningIn);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        resetIfStillSigningIn();
+      }
+    });
+
+    onCleanup(() => {
+      window.removeEventListener('focus', resetIfStillSigningIn);
+      document.removeEventListener('visibilitychange', resetIfStillSigningIn);
+    });
+  });
+
+  const LOGIN_TIMEOUT_MS = import.meta.env.MODE === 'e2e' ? 1000 : 30_000;
+
   const handleLogin = async () => {
     if (signingIn()) return;
 
     setSigningIn(true);
+    setSigningInStartedAt(Date.now());
     setLoginError('');
+
+    let settled = false;
+
+    const timeout = window.setTimeout(() => {
+      if (!settled) {
+        setSigningIn(false);
+        setLoginError('');
+      }
+    }, LOGIN_TIMEOUT_MS);
 
     try {
       await loginWithGoogle();
-      // Auth state will automatically update via App.tsx onAuthStateChanged
+      settled = true;
     } catch (e: any) {
+      settled = true;
       const code = e?.code || (e?.message?.match(/\(auth\/([a-z\-]+)\)/)?.[0]?.replace('(', '').replace(')', ''));
 
       if (
@@ -94,6 +128,7 @@ export default function Dashboard() {
 
       setLoginError('ログインに失敗しました。もう一度お試しください。');
     } finally {
+      window.clearTimeout(timeout);
       setSigningIn(false);
     }
   };

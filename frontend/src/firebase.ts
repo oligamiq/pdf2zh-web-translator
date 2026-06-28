@@ -31,8 +31,17 @@ export const auth = getAuth(app);
 
 export const loginWithGoogle = async () => {
   if (import.meta.env.MODE === 'e2e' && import.meta.env.VITE_E2E_AUTH_BYPASS === 'true') {
-    if ((window as any).__e2e_simulate_login_error) {
-      throw { code: (window as any).__e2e_simulate_login_error };
+    if ((window as any).__e2e_simulate_login_hang) {
+      return new Promise(() => {}); // hang forever
+    }
+    
+    const simError = (window as any).__e2e_simulate_login_error;
+    if (simError) {
+      if (typeof simError === 'object' && simError.delayMs) {
+        await new Promise(resolve => setTimeout(resolve, simError.delayMs));
+        throw { code: simError.code };
+      }
+      throw { code: typeof simError === 'string' ? simError : simError.code };
     }
     sessionStorage.setItem('e2e_token', 'mock-token');
     sessionStorage.setItem('e2e_user_email', 'e2e-user@example.com');
