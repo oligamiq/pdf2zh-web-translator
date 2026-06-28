@@ -35,15 +35,29 @@ const pages = [
     description: 'PDF翻訳Webアプリのライセンス、使用しているOSS、AGPL-3.0コンポーネント、第三者ライセンス情報を掲載しています。',
     ogDescription: 'PDF翻訳Webアプリのライセンス、使用しているOSS、AGPL-3.0コンポーネント、第三者ライセンス情報を掲載しています。',
     content: `
-      <div style="padding: 24px; max-width: 800px; margin: 0 auto; font-family: sans-serif;">
+      <main style="padding: 24px; max-width: 800px; margin: 0 auto; font-family: sans-serif;">
         <h1>ライセンス</h1>
-        <p>このアプリのソースコードは MIT License のもとで提供されます。</p>
-        <p>pdf2zh-next は AGPL-3.0 ライセンスで提供されています。</p>
-        <h2>第三者ライセンス</h2>
-        <p>詳細な第三者ライセンスは THIRD_PARTY_NOTICES.md を参照してください。</p>
-        <p>ソースコードを見る:</p>
-        <a href="https://github.com/oligamiq/pdf2zh-web-translator">https://github.com/oligamiq/pdf2zh-web-translator</a>
-      </div>
+
+        <section>
+          <h2>このアプリのライセンス</h2>
+          <p>
+            このアプリの独自コードは MIT License のもとで公開されています。
+            ソースコードは
+            <a href="https://github.com/oligamiq/pdf2zh-web-translator">
+              GitHub repository
+            </a>
+            で確認できます。
+          </p>
+        </section>
+
+        <section>
+          <h2>重要なライセンス上の注意</h2>
+          <p>
+            このアプリは AGPL-3.0 ライセンスで提供されている pdf2zh-next を利用しています。
+            独自コードはMITですが、pdf2zh-next などの第三者コンポーネントはそれぞれのライセンスに従います。
+          </p>
+        </section>
+      </main>
     `
   }
 ];
@@ -63,7 +77,7 @@ function prerender() {
   }
 
   for (const page of pages) {
-    let html = template.replace('<div id="root"></div>', '<div id="root">' + page.content + '</div>');
+    let html = template.replace(/<div id="root">[\s\S]*?<\/div>/, '<div id="root">' + page.content + '</div>');
     
     // Replace SEO tags
     html = html.replace(/<title>.*?<\/title>/, '<title>' + page.title + '</title>');
@@ -89,18 +103,22 @@ function prerender() {
   }
 
   // Generate sitemap.xml
+  const today = new Date().toISOString().split('T')[0];
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="https://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>${SITE_URL}/</loc>
+    <lastmod>${today}</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
     <loc>${SITE_URL}/about</loc>
+    <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
   </url>
   <url>
     <loc>${SITE_URL}/licenses</loc>
+    <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
   </url>
 </urlset>`;

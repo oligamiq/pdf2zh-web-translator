@@ -44,9 +44,12 @@ jobs:
           
       - name: Check AGPL and GitHub references in licenses
         run: |
-          grep "AGPL-3.0" frontend/dist/licenses/index.html
-          grep "pdf2zh-next" frontend/dist/licenses/index.html
-          grep "github.com/oligamiq/pdf2zh-web-translator" frontend/dist/licenses/index.html
+          grep -F "AGPL-3.0" frontend/dist/licenses/index.html
+          grep -F "pdf2zh-next" frontend/dist/licenses/index.html
+          grep -F "github.com/oligamiq/pdf2zh-web-translator" frontend/dist/licenses/index.html
+          grep -F "<h1>ライセンス</h1>" frontend/dist/licenses/index.html
+          grep -F "pdf2zh-next" frontend/dist/licenses.html
+          grep -F "github.com/oligamiq/pdf2zh-web-translator" frontend/dist/licenses.html
         
       - name: Run frontend E2E directly
         run: npm --workspace frontend run test:e2e -- --reporter=list
