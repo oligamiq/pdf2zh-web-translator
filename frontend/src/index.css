@@ -866,13 +866,29 @@ th { color: var(--text-muted); font-weight: normal; }
 
   .mobile-file-picker {
     display: block;
+    width: 100%;
+    margin: 0.75rem 0 1rem;
   }
 
-  .primary-file-button {
+  .primary-file-button,
+  .file-select-button {
     width: 100%;
-    min-height: 3.25rem;
-    font-size: 1.1rem;
-    font-weight: 700;
+    min-height: 4rem;
+    padding: 1rem 1.25rem;
+    border-radius: 1rem;
+    font-size: 1.15rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .file-help-text {
+    margin-top: 0.4rem;
+    font-size: 0.85rem;
+    opacity: 0.8;
+    text-align: center;
   }
 }
 

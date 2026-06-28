@@ -31,6 +31,9 @@ export const auth = getAuth(app);
 
 export const loginWithGoogle = async () => {
   if (import.meta.env.MODE === 'e2e' && import.meta.env.VITE_E2E_AUTH_BYPASS === 'true') {
+    if ((window as any).__e2e_simulate_login_error) {
+      throw { code: (window as any).__e2e_simulate_login_error };
+    }
     sessionStorage.setItem('e2e_token', 'mock-token');
     sessionStorage.setItem('e2e_user_email', 'e2e-user@example.com');
     setCurrentUser({ uid: 'e2e-user', email: 'e2e-user@example.com' } as User);

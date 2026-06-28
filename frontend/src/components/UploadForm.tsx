@@ -247,17 +247,27 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
           </div>
 
           <div class="mobile-file-picker" style="margin-bottom: 16px;">
-            <button data-testid="file-select-button" class="btn primary-file-button" disabled={!authReady()} onClick={() => document.getElementById('mobile-pdf-file-input')?.click()} style="width: 100%; min-height: 3.25rem; font-size: 1.1rem; font-weight: 700; background: var(--accent); color: white; border: none; border-radius: 8px; cursor: pointer;">
-              {!authReady() ? 'サインイン確認中...' : 'PDFファイルを選択'}
-            </button>
             <input 
               id="mobile-pdf-file-input"
+              data-testid="mobile-pdf-file-input"
               type="file" 
               accept="application/pdf"
               onChange={handleFileChange} 
               disabled={!authReady()}
-              style="display: none;"
+              hidden
             />
+            <label 
+              for="mobile-pdf-file-input"
+              data-testid="file-select-button" 
+              class={`btn primary-file-button ${!authReady() ? 'disabled' : ''}`}
+            >
+              {!authReady() ? 'サインイン確認中...' : 'PDFファイルを選択'}
+            </label>
+            <Show when={limits()}>
+              <div class="file-help-text">
+                PDFのみ / 最大{limits()!.pdf_max_bytes / (1024 * 1024)} MiB
+              </div>
+            </Show>
           </div>
         </>
       )}

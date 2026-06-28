@@ -98,7 +98,7 @@ test.describe('Public Upload UI', () => {
     await page.goto('/');
 
     // Check Guest mode info box
-    await expect(page.locator('text=ゲスト利用').first()).toBeVisible();
+    await expect(page.locator('summary', { hasText: 'ゲスト利用' })).toBeVisible();
 
     // Wait for Turnstile token to be ready
     await expect(page.getByTestId('turnstile-ready')).toBeAttached();

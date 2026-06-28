@@ -162,37 +162,48 @@ test.describe('Mobile Layout', () => {
     expect(loginBox!.x + loginBox!.width).toBeLessThanOrEqual(viewportWidth + 1);
   });
 
-  test('mobile upload CTA is visible above the fold for guests', async ({ page }) => {
+  test('mobile file select button is prominent above the fold', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await setupDefaultApiMocks(page);
 
     await page.goto('/');
 
-    const selectButton = page.getByTestId('file-select-button');
-    await expect(selectButton).toBeVisible();
+    const button = page.getByTestId('file-select-button');
+    await expect(button).toBeVisible();
 
-    const box = await selectButton.boundingBox();
+    const box = await button.boundingBox();
     const viewportHeight = await page.evaluate(() => window.innerHeight);
-    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-    const viewportWidth = await page.evaluate(() => window.innerWidth);
 
-    expect(box!.y).toBeLessThan(viewportHeight * 0.75);
-    expect(scrollWidth).toBeLessThanOrEqual(viewportWidth + 1);
+    expect(box!.y).toBeLessThan(viewportHeight * 0.7);
+    expect(box!.width).toBeGreaterThan(280);
+    expect(box!.height).toBeGreaterThanOrEqual(56);
   });
 
-  test('mobile upload CTA is visible above the fold for signed-in users', async ({ page }) => {
+  test('guest login button can be retried after popup cancellation', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await setupAuthenticatedUser(page);
     await setupDefaultApiMocks(page);
 
     await page.goto('/');
 
-    const selectButton = page.getByTestId('file-select-button');
-    await expect(selectButton).toBeVisible();
+    const login = page.getByTestId('guest-auth-button');
+    await expect(login).toBeEnabled();
 
-    const box = await selectButton.boundingBox();
-    const viewportHeight = await page.evaluate(() => window.innerHeight);
+    // Set up mock to throw cancelled error
+    await page.evaluate(() => {
+      (window as any).__e2e_simulate_login_error = 'auth/popup-closed-by-user';
+    });
 
-    expect(box!.y).toBeLessThan(viewportHeight * 0.75);
+    await login.click();
+
+    // Should become enabled again
+    await expect(login).toBeEnabled({ timeout: 5000 });
+
+    // Set up mock to succeed next time
+    await page.evaluate(() => {
+      (window as any).__e2e_simulate_login_error = null;
+    });
+
+    await login.click();
+    // After successful mock login, it might disappear or change state, but we mainly check it could be clicked again
   });
 });

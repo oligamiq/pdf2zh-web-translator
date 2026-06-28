@@ -72,17 +72,18 @@ export default function Dashboard() {
       await loginWithGoogle();
       // Auth state will automatically update via App.tsx onAuthStateChanged
     } catch (e: any) {
-      const code = e?.code;
+      const code = e?.code || (e?.message?.match(/\(auth\/([a-z\-]+)\)/)?.[0]?.replace('(', '').replace(')', ''));
 
       if (
         code === 'auth/cancelled-popup-request' ||
         code === 'auth/popup-closed-by-user'
       ) {
+        setLoginError('');
         return;
       }
 
       if (code === 'auth/popup-blocked') {
-        setLoginError('Popup was blocked. Please allow popups and try again.');
+        setLoginError('ログインポップアップがブロックされました。ブラウザ設定を確認してください。');
         return;
       }
 
@@ -91,7 +92,7 @@ export default function Dashboard() {
         return;
       }
 
-      setLoginError('Failed to sign in with Google. Please try again.');
+      setLoginError('ログインに失敗しました。もう一度お試しください。');
     } finally {
       setSigningIn(false);
     }
@@ -114,9 +115,19 @@ export default function Dashboard() {
                 when={currentUser()}
                 fallback={
                   <div style="position: relative;">
-                    <button class="btn guest-auth-button" data-testid="guest-auth-button" onClick={handleLogin} disabled={signingIn()}>
-                      <span class="guest-auth-chip" style={{ background: "var(--accent)", color: "white" }}>ゲスト</span>
-                      <span class="guest-auth-label">{signingIn() ? 'ログイン中...' : 'Googleログイン'}</span>
+                    <button 
+                      class="btn guest-auth-button" 
+                      data-testid="guest-auth-button" 
+                      onClick={handleLogin} 
+                      disabled={signingIn()}
+                      aria-busy={signingIn()}
+                    >
+                      {signingIn() ? 'ログイン中...' : (
+                        <>
+                          <span class="guest-auth-chip" style={{ background: "var(--accent)", color: "white" }}>ゲスト</span>
+                          <span class="guest-auth-label">ログイン</span>
+                        </>
+                      )}
                     </button>
                     {loginError() && <div style="position: absolute; top: 100%; right: 0; color: var(--danger); margin-top: 4px; font-size: 14px; white-space: nowrap;">{loginError()}</div>}
                   </div>

@@ -62,7 +62,7 @@ test.describe('Licenses page', () => {
     await page.goto('/');
     
     // Wait for limits to load
-    await expect(page.locator('text=ゲスト利用').first()).toBeVisible();
+    await expect(page.locator('summary', { hasText: 'ゲスト利用' })).toBeVisible();
     
     // The link might be in a collapsed details, so click summary first if present
     const summary = page.locator('summary:has-text("ゲスト利用")');
