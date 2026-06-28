@@ -28,7 +28,7 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
+        run: npm exec --workspace frontend -- playwright install --with-deps chromium
 
       - name: Build project
         run: npm run build

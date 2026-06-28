@@ -53,7 +53,7 @@ It correctly bundles Solid in production mode and optimizes the build for the be
 
 ### `npm run test:e2e`
 
-Runs Playwright E2E tests. Make sure you install playwright dependencies first (`npx playwright install --with-deps`).
+Runs Playwright E2E tests. Make sure you install playwright dependencies first (`npm exec --workspace frontend -- playwright install --with-deps`).
 
 ## Deployment
 
