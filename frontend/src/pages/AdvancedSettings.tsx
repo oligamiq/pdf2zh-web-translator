@@ -215,7 +215,7 @@ export default function AdvancedSettings() {
         </Show>
         <Show when={currentUser()}>
           <Show when={message()}>
-            <div class={`alert ${message()?.type === 'success' ? 'alert-success' : 'alert-error'}`} style="margin-top: 24px;">
+            <div data-testid="settings-message" class={`alert ${message()?.type === 'success' ? 'alert-success' : 'alert-error'}`} style="margin-top: 24px;">
               {message()?.text}
             </div>
           </Show>
@@ -223,7 +223,7 @@ export default function AdvancedSettings() {
           <div class="settings-card" style="margin-top: 24px; padding: 24px;">
             <div class="flex-center-between" style="margin-bottom: 8px;">
               <h2 class="settings-section-title" style="margin-bottom: 0;">フォールバックプロバイダ</h2>
-              <button class="button button-primary" onClick={openAddForm}>+ Providerを追加</button>
+              <button class="button button-primary" data-testid="add-provider-button" onClick={openAddForm}>+ Providerを追加</button>
             </div>
             <p class="settings-section-desc">Providerは上から順に試行されます。1つが失敗した場合、次の有効なProviderが使用されます。</p>
             
@@ -296,7 +296,7 @@ export default function AdvancedSettings() {
                         </div>
                       </div>
                       <div class="provider-actions">
-                        <button class="button button-secondary" onClick={() => handleTest(p.id)} disabled={testStatus === 'Testing...'} title="Test connection">テスト</button>
+                        <button class="button button-secondary" data-testid="provider-test-button" onClick={() => handleTest(p.id)} disabled={testStatus === 'Testing...'} title="Test connection">テスト</button>
                         <button class="button button-secondary" onClick={() => openEditForm(p)} title="Edit provider">編集</button>
                         <button class="button button-secondary" onClick={() => handleToggleEnable(p)} title={p.enabled ? "Disable this provider" : "Enable this provider"}>{p.enabled ? '無効化' : '有効化'}</button>
                         <button class="button button-danger" onClick={() => handleDelete(p.id)} title="Delete provider">削除</button>

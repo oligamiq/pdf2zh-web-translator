@@ -1,20 +1,15 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedUser } from './helpers/auth';
+import { setupDefaultApiMocks, setupApiGuard } from './helpers/api';
 
 test.describe('Layout & Long Text Resistance', () => {
   const longFilename = 'A'.repeat(120) + '_super_long_filename_that_tests_layout_overflow_and_ellipsis_behavior.pdf';
   const longLogLine = 'B'.repeat(1000);
 
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      window.sessionStorage.setItem('e2e_token', 'mock-valid-token');
-      window.turnstile = {
-        render: (container: string, options: any) => {
-          setTimeout(() => options.callback('mock-turnstile-token'), 100);
-          return 'widget-id';
-        },
-        reset: () => {},
-      };
-    });
+    await setupApiGuard(page);
+    await setupDefaultApiMocks(page);
+    await setupAuthenticatedUser(page);
 
     await page.route('**/health/pc-api', async route => {
       await route.fulfill({ status: 200, body: JSON.stringify({ ok: true, status: 'online' }) });
@@ -208,7 +203,7 @@ test.describe('Layout & Long Text Resistance', () => {
 
       const brand = page.locator('.brand');
       // aria-label="アカウントメニュー" でボタンを取得できる
-      const accountMenuBtn = page.getByRole('button', { name: 'アカウントメニュー' });
+      const accountMenuBtn = page.getByTestId('account-menu-button');
       const accountAvatar = accountMenuBtn.locator('.account-avatar');
       const emailSpan = page.locator('.account-menu-email');
       const settingsBtn = page.getByRole('menuitem', { name: '設定' });
@@ -296,7 +291,7 @@ test.describe('Layout & Long Text Resistance', () => {
 
     await page.goto('/');
 
-    const accountMenuBtn = page.getByRole('button', { name: 'アカウントメニュー' });
+    const accountMenuBtn = page.getByTestId('account-menu-button');
     const settingsBtn = page.getByRole('menuitem', { name: '設定' });
     const aboutBtn = page.getByRole('menuitem', { name: '利用制限と注意事項' });
     const signoutBtn = page.getByRole('menuitem', { name: 'ログアウト' });

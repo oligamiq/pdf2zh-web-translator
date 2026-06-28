@@ -1,17 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedUser } from './helpers/auth';
+import { setupDefaultApiMocks, setupApiGuard } from './helpers/api';
 
 test.describe('UX Improvements', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      window.sessionStorage.setItem('e2e_token', 'mock-valid-token');
-      window.turnstile = {
-        render: (container: string, options: any) => {
-          setTimeout(() => options.callback('mock-turnstile-token'), 100);
-          return 'widget-id';
-        },
-        reset: () => {},
-      };
-    });
+    await setupApiGuard(page);
+    await setupDefaultApiMocks(page);
+    await setupAuthenticatedUser(page);
 
     await page.route('**/health/pc-api', async route => {
       await route.fulfill({ status: 200, body: JSON.stringify({ ok: true, status: 'online' }) });
@@ -46,7 +41,7 @@ test.describe('UX Improvements', () => {
     await expect(page.getByText('変換サーバー: オンライン')).toBeVisible();
 
     // Check 7-day note
-    await expect(page.getByText('変換履歴は一定期間で自動的に削除されます。')).toBeVisible();
+    await expect(page.getByTestId('retention-note')).toBeVisible();
 
     // Check completed job actions
     const job1Row = page.getByTestId('job-row').filter({ hasText: 'very_long_filename_that_should_be_truncated.pdf' });
@@ -101,8 +96,8 @@ test.describe('UX Improvements', () => {
     await expect(page.locator('text=デフォルトのURL')).not.toBeVisible();
 
     // Test Provider API error handling
-    await page.getByRole('button', { name: 'テスト' }).click();
-    await expect(page.getByText('Test failed: API key is not set.')).toBeVisible();
+    await page.getByTestId('provider-test-button').click();
+    await expect(page.getByTestId('settings-message')).toContainText('Test failed: API key is not set.');
   });
 
   test('should display offline badge', async ({ page }) => {

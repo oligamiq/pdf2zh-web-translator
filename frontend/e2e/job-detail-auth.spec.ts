@@ -1,8 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { setupDefaultApiMocks, setupApiGuard } from './helpers/api';
 
 test.describe('Job Details Auth & Retry', () => {
   test.beforeEach(async ({ page }) => {
     page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+
+    await setupApiGuard(page);
+    await setupDefaultApiMocks(page);
 
     // Mock Turnstile
     await page.addInitScript(() => {
@@ -13,11 +17,6 @@ test.describe('Job Details Auth & Retry', () => {
         },
         reset: () => {},
       };
-    });
-
-    // Mock /healthz
-    await page.route('**/healthz', async route => {
-      await route.fulfill({ status: 200, body: 'ok' });
     });
   });
 

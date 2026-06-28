@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedUser } from './helpers/auth';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -53,15 +54,12 @@ test.describe('Licenses page', () => {
 
   test('Can navigate to licenses from logged-in account menu', async ({ page }) => {
     // Mock user login
-    await page.addInitScript(() => {
-      window.sessionStorage.setItem('e2e_token', 'mock-token');
-      window.sessionStorage.setItem('e2e_user_email', 'test@example.com');
-    });
+    await setupAuthenticatedUser(page);
     
     await page.goto('/');
     
     // Open menu
-    await page.getByRole('button', { name: 'アカウントメニュー' }).click();
+    await page.getByTestId('account-menu-button').click();
     await page.click('a:has-text("ライセンス")');
     await expect(page).toHaveURL(/.*\/licenses/);
   });

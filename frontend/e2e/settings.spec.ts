@@ -1,14 +1,15 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedUser } from './helpers/auth';
+import { setupDefaultApiMocks, setupApiGuard } from './helpers/api';
 
 test.describe('Settings UI', () => {
   test.beforeEach(async ({ page }) => {
     page.on('console', msg => console.log('PAGE LOG:', msg.text()));
     page.on('pageerror', err => console.log('PAGE ERROR:', err.message));
-    // Bypass auth via sessionStorage
-    await page.addInitScript(() => {
-      window.sessionStorage.setItem('e2e_token', 'mock_token');
-      window.sessionStorage.setItem('e2e_user_email', 'e2e@example.com');
-    });
+    
+    await setupApiGuard(page);
+    await setupDefaultApiMocks(page);
+    await setupAuthenticatedUser(page);
 
     // Mock GET /jobs for dashboard
     await page.route('**/jobs', async (route) => {
@@ -59,7 +60,7 @@ test.describe('Settings UI', () => {
     await page.goto('/');
     
     // Go to Settings
-    await page.getByRole('button', { name: 'アカウントメニュー' }).click();
+    await page.getByTestId('account-menu-button').click();
     await page.click('a:has-text("設定")');
     await expect(page).toHaveURL(/.*\/settings/);
 
@@ -112,7 +113,7 @@ test.describe('Settings UI', () => {
 
     await page.goto('/settings/advanced');
     
-    await page.click('button:has-text("+ Providerを追加")');
+    await page.getByTestId('add-provider-button').click();
     await expect(page.locator('text=Providerを追加').first()).toBeVisible();
 
     await page.selectOption('select', 'siliconflow_free');

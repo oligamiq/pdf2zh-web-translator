@@ -131,6 +131,7 @@ export default function Dashboard() {
                     <button
                       class="btn account-icon-button"
                       type="button"
+                      data-testid="account-menu-button"
                       aria-label="アカウントメニュー"
                       aria-haspopup="menu"
                       aria-expanded={accountMenuOpen()}

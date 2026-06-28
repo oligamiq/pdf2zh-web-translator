@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { setupDefaultApiMocks, setupApiGuard } from './helpers/api';
 
 test.describe('Usage limits', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiGuard(page);
+    await setupDefaultApiMocks(page);
+  });
+
   test('About page is accessible', async ({ page }) => {
     await page.goto('/about');
     await expect(page.locator('h1')).toHaveText('利用制限と注意事項');

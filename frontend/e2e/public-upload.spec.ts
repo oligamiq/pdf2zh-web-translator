@@ -1,9 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { setupDefaultApiMocks, setupApiGuard } from './helpers/api';
 
 test.describe('Public Upload UI', () => {
   test.beforeEach(async ({ page }) => {
     page.on('console', msg => console.log('PAGE LOG:', msg.text()));
     page.on('pageerror', err => console.log('PAGE ERROR:', err.message));
+
+    await setupApiGuard(page);
+    await setupDefaultApiMocks(page);
 
     // Clear any token to simulate Guest Mode
     await page.addInitScript(() => {

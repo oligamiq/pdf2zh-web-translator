@@ -113,9 +113,9 @@ export default function JobList(props: { authReady?: boolean, user?: any, refres
             </div>
           )}</For>
         </div>
-        <div style="margin-top: 16px; font-size: 0.875rem; color: var(--text-muted); text-align: center;">
+        <p class="retention-note" data-testid="retention-note" style="margin-top: 16px; font-size: 0.875rem; color: var(--text-muted); text-align: center;">
           変換履歴は一定期間で自動的に削除されます。
-        </div>
+        </p>
         </Show>
       </Show>
     </div>
