@@ -64,6 +64,14 @@ while [ $RETRY -lt $MAX_RETRIES ]; do
     else
       echo "Phase is $PHASE instead of failed."
     fi
+
+    # Check that error message is not TypeError
+    ERROR_MSG=$(echo "$JOB_RESP" | grep -o '"error_message":"[^"]*' | cut -d'"' -f4)
+    echo "Error message: $ERROR_MSG"
+    if echo "$ERROR_MSG" | grep -qi "TypeError"; then
+      echo "FAILED: Error message contains TypeError (report_progress signature issue?)"
+      exit 1
+    fi
     
     # Check log tail
     if echo "$JOB_RESP" | grep -qi "log_tail"; then
