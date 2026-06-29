@@ -336,4 +336,57 @@ test.describe('Layout & Long Text Resistance', () => {
     // We can also check if the button changed to "Sign in with Google".
     await expect(page.getByTestId('guest-auth-button')).toBeVisible();
   });
+
+  test("account menu hover highlight stays inside menu bounds", async ({ page }) => {
+    await setupAuthenticatedUser(page);
+    await page.goto("/");
+
+    await page.getByTestId("account-menu-button").click();
+
+    const menu = page.locator(".account-menu-popover");
+    const item = page.getByRole("menuitem", { name: /利用制限と注意事項/ });
+
+    await item.hover();
+
+    const menuBox = await menu.boundingBox();
+    const itemBox = await item.boundingBox();
+
+    expect(menuBox).not.toBeNull();
+    expect(itemBox).not.toBeNull();
+
+    expect(itemBox!.x).toBeGreaterThanOrEqual(menuBox!.x);
+    expect(itemBox!.x + itemBox!.width).toBeLessThanOrEqual(menuBox!.x + menuBox!.width);
+  });
+
+  test("dragging account menu text does not show upload drop overlay", async ({ page }) => {
+    await setupAuthenticatedUser(page);
+    await page.goto("/");
+
+    await page.getByTestId("account-menu-button").click();
+
+    const menu = page.getByTestId("account-menu");
+    await expect(menu).toBeVisible();
+
+    await menu.dispatchEvent("dragenter", {
+      dataTransfer: {
+        types: ["text/plain"],
+        items: [],
+      },
+    });
+
+    await expect(page.getByText(/どこでもドロップしてアップロード/)).toHaveCount(0);
+  });
+
+  test("file drag still shows upload drop overlay", async ({ page }) => {
+    await page.goto("/");
+
+    await page.dispatchEvent("body", "dragenter", {
+      dataTransfer: {
+        types: ["Files"],
+        items: [{ kind: "file", type: "application/pdf" }],
+      },
+    });
+
+    await expect(page.getByText(/どこでもドロップしてアップロード/)).toBeVisible();
+  });
 });

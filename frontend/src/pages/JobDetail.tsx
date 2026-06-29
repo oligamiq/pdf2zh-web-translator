@@ -138,9 +138,14 @@ export default function JobDetail() {
                       <Show when={stat.rate_limit_count > 0}>
                         <div style="color: var(--accent);">レートリミット(429): {stat.rate_limit_count}</div>
                       </Show>
+                      <Show when={stat.last_http_status}>
+                        <div style="color: var(--danger); font-size: 0.75rem; font-family: monospace;">
+                          HTTPステータス: <span class="provider-http-status">HTTP {stat.last_http_status}</span>
+                        </div>
+                      </Show>
                       <Show when={stat.last_error}>
                         <div style="color: var(--danger); font-size: 0.75rem; font-family: monospace;">
-                          エラー: {stat.last_http_status ? `HTTP ${stat.last_http_status} ` : ''}{stat.last_error}
+                          エラー: {stat.last_error}
                         </div>
                       </Show>
                       <Show when={stat.total_requests === 0 && stat.status === 'failed'}>

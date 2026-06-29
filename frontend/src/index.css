@@ -94,6 +94,13 @@ a:hover { text-decoration: underline; }
 .account-menu {
   position: relative;
   justify-self: end;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.account-menu * {
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .account-icon-button {
@@ -145,6 +152,8 @@ a:hover { text-decoration: underline; }
   border-radius: 0.75rem;
   background: var(--bg);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .account-menu-email {
@@ -160,6 +169,7 @@ a:hover { text-decoration: underline; }
 
 .account-menu-popover a,
 .account-menu-popover button {
+  box-sizing: border-box;
   width: 100%;
   display: block;
   text-align: left;
@@ -171,6 +181,7 @@ a:hover { text-decoration: underline; }
   cursor: pointer;
   text-decoration: none;
   font-size: 0.95rem;
+  max-width: 100%;
 }
 
 .account-menu-popover a:hover,

@@ -169,7 +169,17 @@ export default function Dashboard() {
                 }
               >
                 {(u) => (
-                  <div class="account-menu" data-testid="account-menu" ref={accountMenuRef}>
+                  <div 
+                    class="account-menu" 
+                    data-testid="account-menu" 
+                    ref={accountMenuRef}
+                    data-no-upload-dnd
+                    draggable={false}
+                    onDragStart={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                  >
                     <button
                       class="btn account-icon-button"
                       type="button"
