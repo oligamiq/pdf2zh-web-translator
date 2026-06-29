@@ -48,7 +48,41 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
     loadTurnstile();
 
     // Drag and drop logic...
+    function isFileDrag(event: DragEvent) {
+      const dt = event.dataTransfer;
+      if (!dt) return false;
+
+      if (Array.from(dt.types ?? []).includes("Files")) {
+        return true;
+      }
+
+      return Array.from(dt.items ?? []).some((item) => item.kind === "file");
+    }
+
+    function isNoUploadDndTarget(target: EventTarget | null) {
+      if (!(target instanceof Element)) return false;
+
+      return Boolean(
+        target.closest(
+          [
+            "[data-no-upload-dnd]",
+            ".account-menu",
+            ".account-menu-item",
+            "button",
+            "a",
+            "input",
+            "select",
+            "textarea",
+            "summary",
+          ].join(",")
+        )
+      );
+    }
+
     const handleDragEnter = (e: DragEvent) => {
+      if (isNoUploadDndTarget(e.target)) return;
+      if (!isFileDrag(e)) return;
+      
       e.preventDefault();
       dragCounter++;
       if (e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
@@ -57,6 +91,9 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
     };
 
     const handleDragOver = (e: DragEvent) => {
+      if (isNoUploadDndTarget(e.target)) return;
+      if (!isFileDrag(e)) return;
+      
       e.preventDefault();
       if (!isDragging()) {
         setIsDragging(true);
@@ -64,6 +101,9 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
     };
 
     const handleDragLeave = (e: DragEvent) => {
+      if (isNoUploadDndTarget(e.target)) return;
+      if (!isFileDrag(e)) return;
+      
       e.preventDefault();
       dragCounter--;
       if (dragCounter === 0) {
@@ -72,6 +112,9 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
     };
 
     const handleDrop = async (e: DragEvent) => {
+      if (isNoUploadDndTarget(e.target)) return;
+      if (!isFileDrag(e)) return;
+      
       e.preventDefault();
       dragCounter = 0;
       setIsDragging(false);

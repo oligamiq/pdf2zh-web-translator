@@ -45,13 +45,17 @@ export default function LogViewer(props: { jobId: string, status: string }) {
   });
 
   return (
-    <div class="panel" style="flex: 1; display: flex; flex-direction: column; min-height: 0; margin-bottom: 0;">
+    <div class="panel live-log-card" style="margin-bottom: 0; margin-top: 24px;">
       <h3 style="margin-top: 0; flex-shrink: 0;">Live Log Tail</h3>
       <div 
         ref={logContainerRef}
-        style="flex: 1; overflow-y: auto; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-family: monospace; font-size: 0.875rem; color: #a78bfa; white-space: pre-wrap;"
+        class="live-log-scroll live-log-body"
+        data-testid="live-log-tail-body"
+        style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-family: monospace; font-size: 0.875rem; color: #a78bfa;"
       >
-        {logs() || 'No logs generated yet.'}
+        <pre class="live-log-pre">
+          {logs() || 'No logs generated yet.'}
+        </pre>
       </div>
     </div>
   );

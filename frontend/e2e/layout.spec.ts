@@ -149,14 +149,11 @@ test.describe('Layout & Long Text Resistance', () => {
       expect(await checkOverlap(filenameLocator, statusLocator)).toBe(false);
 
       // Check log tail
-      const logDetails = page.locator('details');
-      await logDetails.click(); // Open details
-      
-      const preLocator = page.getByTestId('live-log-pre');
+      const preLocator = page.locator('.live-log-scroll');
       await expect(preLocator).toBeVisible();
 
       const preBox = await preLocator.boundingBox();
-      const parentBox = await page.getByTestId('live-log').boundingBox();
+      const parentBox = await page.locator('.live-log-body').boundingBox();
       
       // Ensure pre width does not exceed parent width
       expect(preBox!.width).toBeLessThanOrEqual(parentBox!.width + 1); // +1 for rounding safe
@@ -335,5 +332,109 @@ test.describe('Layout & Long Text Resistance', () => {
     // but the API call is a good enough check for now.
     // We can also check if the button changed to "Sign in with Google".
     await expect(page.getByTestId('guest-auth-button')).toBeVisible();
+  });
+
+  test("account menu hover highlight stays inside menu bounds", async ({ page }) => {
+    await setupAuthenticatedUser(page);
+    await page.goto("/");
+
+    await page.getByTestId("account-menu-button").click();
+
+    const menu = page.locator(".account-menu-popover");
+    const item = page.getByRole("menuitem", { name: /利用制限と注意事項/ });
+
+    await item.hover();
+
+    const menuBox = await menu.boundingBox();
+    const itemBox = await item.boundingBox();
+
+    expect(menuBox).not.toBeNull();
+    expect(itemBox).not.toBeNull();
+
+    expect(itemBox!.x).toBeGreaterThanOrEqual(menuBox!.x);
+    expect(itemBox!.x + itemBox!.width).toBeLessThanOrEqual(menuBox!.x + menuBox!.width);
+  });
+
+  test("job queue status badges align across rows", async ({ page }) => {
+    await setupAuthenticatedUser(page);
+    await setupDefaultApiMocks(page);
+
+    // Provide mock jobs that trigger the alignment issue
+    await page.route("**/jobs", async (route) => {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: "job-long",
+            original_filename: "very_long_filename_to_push_things_around.pdf",
+            status: "failed",
+            created_at: new Date().toISOString(),
+          },
+          {
+            id: "job-short",
+            original_filename: "short.pdf",
+            status: "completed",
+            created_at: new Date().toISOString(),
+          },
+        ]),
+      });
+    });
+
+    await page.goto("/");
+
+    const statuses = page.getByTestId("job-status");
+    await expect(statuses).toHaveCount(2);
+
+    const boxes = await statuses.evaluateAll((els) =>
+      els.map((el) => el.getBoundingClientRect().left)
+    );
+
+    const first = boxes[0];
+    for (const x of boxes.slice(1)) {
+      expect(Math.abs(x - first)).toBeLessThanOrEqual(2);
+    }
+  });
+
+  test("dragging account menu text does not show upload drop overlay", async ({ page }) => {
+    await setupAuthenticatedUser(page);
+    await page.goto("/");
+
+    await page.getByTestId("account-menu-button").click();
+
+    const menu = page.getByTestId("account-menu");
+    await expect(menu).toBeVisible();
+
+    await menu.evaluate((element) => {
+      const dt = new DataTransfer();
+      // add some string data to simulate text drag
+      dt.setData("text/plain", "Account");
+      const event = new DragEvent("dragenter", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: dt,
+      });
+      element.dispatchEvent(event);
+    });
+
+    await expect(page.getByText(/どこでもドロップしてアップロード/)).toHaveCount(0);
+  });
+
+  test("file drag still shows upload drop overlay", async ({ page }) => {
+    await page.goto("/");
+
+    await page.evaluate(() => {
+      const dt = new DataTransfer();
+      const file = new File(["dummy content"], "test.pdf", { type: "application/pdf" });
+      dt.items.add(file);
+      const event = new DragEvent("dragenter", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: dt,
+      });
+      document.body.dispatchEvent(event);
+    });
+
+    await expect(page.getByText(/どこでもドロップしてアップロード/)).toBeVisible();
   });
 });

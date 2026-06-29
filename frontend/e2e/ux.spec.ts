@@ -264,4 +264,55 @@ test.describe('Mobile Layout', () => {
     await login.click();
     await expect(login).toBeDisabled();
   });
+
+  test("live log tail body keeps minimum readable height in short viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 1000, height: 260 });
+    await page.route('**/jobs/test-job-id', async route => {
+      if (route.request().resourceType() === 'document') {
+        return route.fallback();
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'test-job-id',
+          status: 'running',
+          original_filename: 'test.pdf',
+          created_at: new Date().toISOString(),
+          log_tail: 'short log snippet'
+        })
+      });
+    });
+
+    await page.route('**/jobs/test-job-id/attempts', async route => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
+
+    await page.route('**/jobs/test-job-id/log?offset=0*', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: "Translation log type error progress in short viewport\nLine 2\nLine 3\nLine 4\nLine 5",
+          next_offset: 100
+        })
+      });
+    });
+
+    await page.goto("/jobs/test-job-id");
+
+    const headings = page.getByRole("heading", { name: "Live Log Tail" });
+    await expect(headings).toHaveCount(1);
+
+    const body = page.getByTestId("live-log-tail-body");
+    await expect(body).toBeVisible();
+
+    const box = await body.boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(96);
+
+    const overflowY = await body.evaluate((el) => window.getComputedStyle(el).overflowY);
+    expect(["auto", "scroll"]).toContain(overflowY);
+
+    await expect(body).toContainText(/type|error|progress|Translation|log/i);
+  });
 });

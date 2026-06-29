@@ -8,7 +8,7 @@ export default function About() {
       
       <div class="panel" style="margin-bottom: 24px; padding: 24px;">
         <h2 style="margin-top: 0; color: var(--accent);">このサイトについて</h2>
-        <p>pdf2zhの公式Web UIです。お好みのLLM Providerを使ってPDFドキュメントを多言語に翻訳できます。</p>
+        <p>pdf2zh-next を利用したPDF翻訳Webアプリです。お好みのLLM Providerを使ってPDFドキュメントを多言語に翻訳できます。</p>
       </div>
 
       <div class="panel" style="margin-bottom: 24px; padding: 24px;">
