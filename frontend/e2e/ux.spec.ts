@@ -265,8 +265,8 @@ test.describe('Mobile Layout', () => {
     await expect(login).toBeDisabled();
   });
 
-  test("live log tail remains usable in short viewport", async ({ page }) => {
-    await page.setViewportSize({ width: 1000, height: 320 });
+  test("live log tail body keeps minimum readable height in short viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 1000, height: 260 });
     await page.route('**/jobs/test-job-id', async route => {
       if (route.request().resourceType() === 'document') {
         return route.fallback();
@@ -292,29 +292,27 @@ test.describe('Mobile Layout', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: 'live log line 1\nlive log line 2\n', next_offset: 100 })
+        body: JSON.stringify({
+          data: "Translation log type error progress in short viewport\nLine 2\nLine 3\nLine 4\nLine 5",
+          next_offset: 100
+        })
       });
     });
 
     await page.goto("/jobs/test-job-id");
-    
-    try {
-      await expect(page.getByText('変換中')).toBeVisible({ timeout: 5000 });
-    } catch (e) {
-      console.log('PAGE CONTENT:', await page.content());
-      throw e;
-    }
 
-    const log = page.getByTestId("live-log-tail");
-    await expect(log).toBeVisible();
+    const headings = page.getByRole("heading", { name: "Live Log Tail" });
+    await expect(headings).toHaveCount(1);
 
-    const box = await log.boundingBox();
-    const viewportHeight = await page.evaluate(() => window.innerHeight);
-    const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+    const body = page.getByTestId("live-log-tail-body");
+    await expect(body).toBeVisible();
 
-    expect(box!.height).toBeLessThanOrEqual(viewportHeight);
-    expect(scrollHeight).toBeGreaterThanOrEqual(viewportHeight);
-    
-    await expect(page.getByRole("heading", { name: "Live Log Tail" })).toHaveCount(1);
+    const box = await body.boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(96);
+
+    const overflowY = await body.evaluate((el) => window.getComputedStyle(el).overflowY);
+    expect(["auto", "scroll"]).toContain(overflowY);
+
+    await expect(body).toContainText(/type|error|progress|Translation|log/i);
   });
 });

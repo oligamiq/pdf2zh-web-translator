@@ -109,16 +109,6 @@ export default function JobDetail() {
             <div style="margin-top: 16px; color: var(--danger);">
               <div style="color: var(--text-muted); font-size: 0.875rem;">エラーメッセージ</div>
               <div style="font-weight: 500;">{job().error_message}</div>
-              <Show when={job().log_tail}>
-                <div class="live-log" data-testid="live-log" style="margin-top: 8px;">
-                  <details>
-                    <summary style="color: var(--text-muted); font-size: 0.875rem; user-select: none;">ライブログ</summary>
-                    <pre class="log-tail" data-testid="live-log-pre" style="margin-top: 8px; background: rgba(0,0,0,0.2); font-size: 12px; color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; max-height: 18rem;">
-                      {job().log_tail}
-                    </pre>
-                  </details>
-                </div>
-              </Show>
             </div>
           </Show>
         </div>

@@ -901,8 +901,38 @@ th { color: var(--text-muted); font-weight: normal; }
   }
 }
 
+
 @media (min-width: 641px) {
   .mobile-file-picker {
     display: none;
   }
+}
+
+.job-detail-page,
+.job-detail-layout,
+.job-detail-card {
+  min-height: 0;
+  overflow: visible;
+}
+
+.live-log-card {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.live-log-scroll,
+.live-log-body {
+  box-sizing: border-box;
+  height: clamp(7rem, 35dvh, 22rem);
+  min-height: 7rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.live-log-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
