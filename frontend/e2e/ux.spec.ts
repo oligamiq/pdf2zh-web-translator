@@ -268,6 +268,9 @@ test.describe('Mobile Layout', () => {
   test("live log tail remains usable in short viewport", async ({ page }) => {
     await page.setViewportSize({ width: 1000, height: 320 });
     await page.route('**/jobs/test-job-id', async route => {
+      if (route.request().resourceType() === 'document') {
+        return route.fallback();
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -285,7 +288,7 @@ test.describe('Mobile Layout', () => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
     });
 
-    await page.route('**/jobs/test-job-id/log?offset=0', async route => {
+    await page.route('**/jobs/test-job-id/log?offset=0*', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -295,7 +298,12 @@ test.describe('Mobile Layout', () => {
 
     await page.goto("/jobs/test-job-id");
     
-    await expect(page.getByText('変換中')).toBeVisible({ timeout: 10000 });
+    try {
+      await expect(page.getByText('変換中')).toBeVisible({ timeout: 5000 });
+    } catch (e) {
+      console.log('PAGE CONTENT:', await page.content());
+      throw e;
+    }
 
     const log = page.getByTestId("live-log-tail");
     await expect(log).toBeVisible();
