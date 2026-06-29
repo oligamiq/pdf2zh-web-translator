@@ -536,6 +536,7 @@ async def agent_loop():
                             
                         finally:
                             state = ROUTER_STATES.pop(job_id, None)
+                            final_display_name = state.get("active_provider_name", "Unknown") if state else "Unknown"
                             if state and state.get("stats"):
                                 stats_list = list(state["stats"].values())
                                 if stats_list:

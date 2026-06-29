@@ -355,6 +355,47 @@ test.describe('Layout & Long Text Resistance', () => {
     expect(itemBox!.x + itemBox!.width).toBeLessThanOrEqual(menuBox!.x + menuBox!.width);
   });
 
+  test("job queue status badges align across rows", async ({ page }) => {
+    await setupAuthenticatedUser(page);
+    await setupDefaultApiMocks(page);
+
+    // Provide mock jobs that trigger the alignment issue
+    await page.route("**/jobs", async (route) => {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: "job-long",
+            original_filename: "very_long_filename_to_push_things_around.pdf",
+            status: "failed",
+            created_at: new Date().toISOString(),
+          },
+          {
+            id: "job-short",
+            original_filename: "short.pdf",
+            status: "completed",
+            created_at: new Date().toISOString(),
+          },
+        ]),
+      });
+    });
+
+    await page.goto("/");
+
+    const statuses = page.getByTestId("job-status");
+    await expect(statuses).toHaveCount(2);
+
+    const boxes = await statuses.evaluateAll((els) =>
+      els.map((el) => el.getBoundingClientRect().left)
+    );
+
+    const first = boxes[0];
+    for (const x of boxes.slice(1)) {
+      expect(Math.abs(x - first)).toBeLessThanOrEqual(2);
+    }
+  });
+
   test("dragging account menu text does not show upload drop overlay", async ({ page }) => {
     await setupAuthenticatedUser(page);
     await page.goto("/");
