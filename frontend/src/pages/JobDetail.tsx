@@ -60,7 +60,7 @@ export default function JobDetail() {
   };
 
   return (
-    <div class="container" style="display: flex; flex-direction: column; height: 100vh;">
+    <div class="container job-detail-layout" style="display: flex; flex-direction: column; height: 100vh; min-height: 0;">
       <div class="header" style="flex-shrink: 0;">
         <h1 style="margin: 0;">詳細</h1>
         <div style="display: flex; gap: 12px;">
@@ -129,14 +129,16 @@ export default function JobDetail() {
             <div style="display: flex; flex-direction: column; gap: 8px;">
               {attempts().map((stat: any) => (
                 <div style={`padding: 12px; border-radius: 6px; background: rgba(0,0,0,0.2); border-left: 4px solid ${
-                  stat.total_requests === 0 ? 'var(--border)' : (stat.success_count > 0 ? 'var(--success)' : 'var(--danger)')
+                  (stat.total_requests === 0 && stat.status !== 'failed') ? 'var(--border)' : (stat.success_count > 0 ? 'var(--success)' : 'var(--danger)')
                 }`}>
                   <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                     <strong style="color: var(--text);">{stat.display_name} ({stat.model})</strong>
                   </div>
-                  <Show when={stat.total_requests > 0} fallback={<div style="font-size: 0.875rem; color: var(--text-muted);">未使用</div>}>
+                  <Show when={stat.total_requests > 0 || stat.status === 'failed'} fallback={<div style="font-size: 0.875rem; color: var(--text-muted);">未使用</div>}>
                     <div style="display: flex; flex-direction: column; gap: 2px; font-size: 0.875rem; color: var(--text-muted);">
-                      <div>リクエスト数: {stat.total_requests}</div>
+                      <Show when={stat.total_requests > 0}>
+                        <div>リクエスト数: {stat.total_requests}</div>
+                      </Show>
                       <Show when={stat.success_count > 0}>
                         <div style="color: var(--success);">成功: {stat.success_count}</div>
                       </Show>
@@ -147,9 +149,10 @@ export default function JobDetail() {
                         <div style="color: var(--accent);">レートリミット(429): {stat.rate_limit_count}</div>
                       </Show>
                       <Show when={stat.last_error}>
-                        <div style="color: var(--danger); margin-top: 2px;">
-                          最後のエラー: {stat.last_http_status ? `HTTP ${stat.last_http_status} ` : ''}{stat.last_error}
-                        </div>
+                        <div style="color: var(--danger); font-size: 0.75rem; font-family: monospace;">エラー: {stat.last_error}</div>
+                      </Show>
+                      <Show when={stat.total_requests === 0 && stat.status === 'failed'}>
+                        <div style="color: var(--danger);">初期化エラー: {stat.error_message || 'Connection failed'}</div>
                       </Show>
                     </div>
                   </Show>

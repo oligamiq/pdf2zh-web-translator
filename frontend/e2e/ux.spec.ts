@@ -264,4 +264,49 @@ test.describe('Mobile Layout', () => {
     await login.click();
     await expect(login).toBeDisabled();
   });
+
+  test("live log tail remains usable in short viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 1000, height: 320 });
+    await page.route('**/jobs/test-job-id', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'test-job-id',
+          status: 'running',
+          original_filename: 'test.pdf',
+          created_at: new Date().toISOString(),
+          log_tail: 'short log snippet'
+        })
+      });
+    });
+
+    await page.route('**/jobs/test-job-id/attempts', async route => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
+
+    await page.route('**/jobs/test-job-id/log?offset=0', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: 'live log line 1\nlive log line 2\n', next_offset: 100 })
+      });
+    });
+
+    await page.goto("/jobs/test-job-id");
+    
+    await expect(page.getByText('変換中')).toBeVisible({ timeout: 10000 });
+
+    const log = page.getByTestId("live-log-tail");
+    await expect(log).toBeVisible();
+
+    const box = await log.boundingBox();
+    const viewportHeight = await page.evaluate(() => window.innerHeight);
+    const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+
+    expect(box!.height).toBeLessThanOrEqual(viewportHeight);
+    expect(scrollHeight).toBeGreaterThanOrEqual(viewportHeight);
+    
+    await expect(page.getByRole("heading", { name: "Live Log Tail" })).toHaveCount(1);
+  });
 });

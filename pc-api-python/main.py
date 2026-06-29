@@ -263,7 +263,7 @@ async def agent_loop():
                     error = None
                     log_tail = []
                 
-                    async def report_progress(percent, phase, message, status="running", error_msg=None, active_provider_name=None):
+                    async def report_progress(percent, phase, message, status="running", error_msg=None, active_provider_name=None, **kwargs):
                         payload = {
                             "status": status,
                             "progress_percent": percent,
@@ -274,7 +274,15 @@ async def agent_loop():
                             payload["active_provider_name"] = active_provider_name
                         if error_msg:
                             payload["error_message"] = error_msg
-                            payload["log_tail"] = "\n".join(log_tail)[-4096:]
+                        
+                        passed_log_tail = kwargs.get("log_tail")
+                        if passed_log_tail is not None:
+                            if isinstance(passed_log_tail, list):
+                                payload["log_tail"] = "\n".join(passed_log_tail)[-4000:]
+                            else:
+                                payload["log_tail"] = str(passed_log_tail)[-4000:]
+                        elif error_msg:
+                            payload["log_tail"] = "\n".join(log_tail)[-4000:]
                     
                         try:
                             await client.post(
@@ -404,9 +412,10 @@ async def agent_loop():
                         translate_engine_settings = {
                             "translate_engine_type": "OpenAICompatible",
                             "openai_compatible_model": "router",
-                            "openai_compatible_base_url": f"http://127.0.0.1:8000/router/{job_id}/v1",
+                            "openai_compatible_base_url": f"{os.environ.get('PC_API_INTERNAL_BASE_URL', 'http://127.0.0.1:8080')}/router/{job_id}/v1",
                             "openai_compatible_api_key": "dummy"
                         }
+                        logger.info(f"Using router proxy base url: {os.environ.get('PC_API_INTERNAL_BASE_URL', 'http://127.0.0.1:8080')}/router/<redacted>/v1")
                         
                         settings = SettingsModel(
                             translation={"lang_in": lang_in, "lang_out": lang_out, "output": output_dir},
@@ -517,7 +526,10 @@ async def agent_loop():
                             
                             final_error_str = error_str
                             
-                            await report_progress(last_progress_percent, "failed", error_str, active_provider_name=display_name, log_tail=log_tail[-200:])
+                            try:
+                                await report_progress(last_progress_percent, "failed", error_str, active_provider_name=display_name, log_tail=log_tail[-200:])
+                            except Exception:
+                                logger.exception("failed to report failed progress")
                             
                             if provider_snapshots:
                                 await report_attempt(provider_snapshots[0].get("id"), 1, display_name, provider_snapshots[0].get("model"), "failed", http_status=http_status_code, error_message=error_str)
