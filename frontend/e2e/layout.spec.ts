@@ -149,14 +149,11 @@ test.describe('Layout & Long Text Resistance', () => {
       expect(await checkOverlap(filenameLocator, statusLocator)).toBe(false);
 
       // Check log tail
-      const logDetails = page.locator('details');
-      await logDetails.click(); // Open details
-      
-      const preLocator = page.getByTestId('live-log-pre');
+      const preLocator = page.locator('.live-log-scroll');
       await expect(preLocator).toBeVisible();
 
       const preBox = await preLocator.boundingBox();
-      const parentBox = await page.getByTestId('live-log').boundingBox();
+      const parentBox = await page.locator('.live-log-body').boundingBox();
       
       // Ensure pre width does not exceed parent width
       expect(preBox!.width).toBeLessThanOrEqual(parentBox!.width + 1); // +1 for rounding safe
@@ -367,11 +364,16 @@ test.describe('Layout & Long Text Resistance', () => {
     const menu = page.getByTestId("account-menu");
     await expect(menu).toBeVisible();
 
-    await menu.dispatchEvent("dragenter", {
-      dataTransfer: {
-        types: ["text/plain"],
-        items: [],
-      },
+    await menu.evaluate((element) => {
+      const dt = new DataTransfer();
+      // add some string data to simulate text drag
+      dt.setData("text/plain", "Account");
+      const event = new DragEvent("dragenter", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: dt,
+      });
+      element.dispatchEvent(event);
     });
 
     await expect(page.getByText(/どこでもドロップしてアップロード/)).toHaveCount(0);
@@ -380,11 +382,16 @@ test.describe('Layout & Long Text Resistance', () => {
   test("file drag still shows upload drop overlay", async ({ page }) => {
     await page.goto("/");
 
-    await page.dispatchEvent("body", "dragenter", {
-      dataTransfer: {
-        types: ["Files"],
-        items: [{ kind: "file", type: "application/pdf" }],
-      },
+    await page.evaluate(() => {
+      const dt = new DataTransfer();
+      const file = new File(["dummy content"], "test.pdf", { type: "application/pdf" });
+      dt.items.add(file);
+      const event = new DragEvent("dragenter", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: dt,
+      });
+      document.body.dispatchEvent(event);
     });
 
     await expect(page.getByText(/どこでもドロップしてアップロード/)).toBeVisible();
