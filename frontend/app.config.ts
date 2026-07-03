@@ -1,4 +1,5 @@
 import { defineConfig } from "@solidjs/start/config";
+import { visualizer } from "rollup-plugin-visualizer";
 
 export default defineConfig({
   server: {
@@ -9,4 +10,7 @@ export default defineConfig({
       autoSubfolderIndex: false,
     },
   },
+  vite: {
+    plugins: [visualizer({ filename: "dist/stats.html" })]
+  }
 });
