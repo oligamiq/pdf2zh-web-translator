@@ -4,24 +4,30 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "dev:e2e": "vite --host 127.0.0.1 --mode e2e",
-    "build": "tsc -b && vite build && node ../scripts/prerender-static-pages.mjs",
-    "preview": "vite preview",
+    "dev": "vinxi dev",
+    "build": "vinxi build && node ../scripts/prerender-static-pages.mjs",
+    "build:e2e": "VITE_E2E_AUTH_BYPASS=true vinxi build --mode e2e && node ../scripts/prerender-static-pages.mjs",
+    "start": "vinxi start",
+    "preview": "npx wrangler pages dev dist --ip 127.0.0.1 --port 4173",
     "test:e2e": "playwright test",
+    "test:e2e:prod": "npm run build && playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:line": "playwright test --workers=1 --reporter=line --timeout=15000",
-    "deploy": "rm -rf dist && npm run build && npm run test:e2e && npx wrangler pages deploy dist --project-name pdftr --branch main",
+    "deploy": "rm -rf dist && npm run build && npm run test:e2e:prod && npx wrangler pages deploy dist --project-name pdftr --branch main",
     "check:prod-bundle": "rm -rf dist && npm run build && ! grep -RIn \"e2e_token\\|e2e_user_email\\|VITE_E2E_AUTH_BYPASS\\|e2e_delay_auth\" dist"
   },
   "dependencies": {
+    "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.16.1",
+    "@solidjs/start": "^1.1.13",
     "firebase": "^12.15.0",
-    "solid-js": "^1.9.13"
+    "solid-js": "^1.9.13",
+    "vinxi": "^0.5.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@types/node": "^24.13.2",
+    "rollup-plugin-visualizer": "^7.0.1",
     "typescript": "~6.0.2",
     "vite": "^8.1.0",
     "vite-plugin-solid": "^2.11.12",

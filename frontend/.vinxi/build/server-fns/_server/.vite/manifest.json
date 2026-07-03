@@ -1,0 +1,103 @@
+{
+  "_components-Bpi7F98j.js": {
+    "file": "assets/components-Bpi7F98j.js",
+    "name": "components",
+    "imports": [
+      "_routing-Bi5-inpe.js"
+    ]
+  },
+  "_routing-Bi5-inpe.js": {
+    "file": "assets/routing-Bi5-inpe.js",
+    "name": "routing"
+  },
+  "_server-fns-BxQkARz8.js": {
+    "file": "assets/server-fns-BxQkARz8.js",
+    "name": "server-fns",
+    "dynamicImports": [
+      "src/routes/[...404].tsx?pick=default&pick=$css",
+      "src/routes/[...404].tsx?pick=default&pick=$css",
+      "src/routes/about.tsx?pick=default&pick=$css",
+      "src/routes/about.tsx?pick=default&pick=$css",
+      "src/routes/app.tsx?pick=default&pick=$css",
+      "src/routes/app.tsx?pick=default&pick=$css",
+      "src/routes/index.tsx?pick=default&pick=$css",
+      "src/routes/index.tsx?pick=default&pick=$css",
+      "src/routes/licenses.tsx?pick=default&pick=$css",
+      "src/routes/licenses.tsx?pick=default&pick=$css",
+      "src/app.tsx"
+    ]
+  },
+  "src/app.tsx": {
+    "file": "assets/app-BKliNqmb.js",
+    "name": "app",
+    "src": "src/app.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_server-fns-BxQkARz8.js",
+      "_routing-Bi5-inpe.js"
+    ],
+    "css": [
+      "assets/app-DYKmZOZr.css"
+    ]
+  },
+  "src/routes/[...404].tsx?pick=default&pick=$css": {
+    "file": "_...404_.js",
+    "name": "_...404_",
+    "src": "src/routes/[...404].tsx?pick=default&pick=$css",
+    "isEntry": true,
+    "isDynamicEntry": true,
+    "imports": [
+      "_components-Bpi7F98j.js",
+      "_routing-Bi5-inpe.js"
+    ]
+  },
+  "src/routes/about.tsx?pick=default&pick=$css": {
+    "file": "about.js",
+    "name": "about",
+    "src": "src/routes/about.tsx?pick=default&pick=$css",
+    "isEntry": true,
+    "isDynamicEntry": true,
+    "imports": [
+      "_components-Bpi7F98j.js",
+      "_routing-Bi5-inpe.js"
+    ]
+  },
+  "src/routes/app.tsx?pick=default&pick=$css": {
+    "file": "app.js",
+    "name": "app",
+    "src": "src/routes/app.tsx?pick=default&pick=$css",
+    "isEntry": true,
+    "isDynamicEntry": true
+  },
+  "src/routes/index.tsx?pick=default&pick=$css": {
+    "file": "index.js",
+    "name": "index",
+    "src": "src/routes/index.tsx?pick=default&pick=$css",
+    "isEntry": true,
+    "isDynamicEntry": true,
+    "imports": [
+      "_components-Bpi7F98j.js",
+      "_routing-Bi5-inpe.js"
+    ]
+  },
+  "src/routes/licenses.tsx?pick=default&pick=$css": {
+    "file": "licenses.js",
+    "name": "licenses",
+    "src": "src/routes/licenses.tsx?pick=default&pick=$css",
+    "isEntry": true,
+    "isDynamicEntry": true,
+    "imports": [
+      "_components-Bpi7F98j.js",
+      "_routing-Bi5-inpe.js"
+    ]
+  },
+  "virtual:$vinxi/handler/server-fns": {
+    "file": "server-fns.js",
+    "name": "server-fns",
+    "src": "virtual:$vinxi/handler/server-fns",
+    "isEntry": true,
+    "imports": [
+      "_server-fns-BxQkARz8.js"
+    ]
+  }
+}
