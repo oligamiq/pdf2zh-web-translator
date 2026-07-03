@@ -1,8 +1,10 @@
 import { MetaProvider, Title } from "@solidjs/meta";
-import { Router } from "@solidjs/router";
+import { Router, Route, Navigate } from "@solidjs/router";
 import { FileRoutes } from "@solidjs/start/router";
 import { Suspense } from "solid-js";
 import "./index.css";
+
+import GlobalApp from "./App";
 
 export default function App() {
   return (
@@ -10,11 +12,16 @@ export default function App() {
       root={(props) => (
         <MetaProvider>
           <Title>PDF翻訳</Title>
-          <Suspense>{props.children}</Suspense>
+          <GlobalApp>
+            <Suspense>{props.children}</Suspense>
+          </GlobalApp>
         </MetaProvider>
       )}
     >
       <FileRoutes />
+      <Route path="/settings" component={() => <Navigate href="/app/settings" />} />
+      <Route path="/settings/*" component={() => <Navigate href="/app/settings" />} />
+      <Route path="/jobs/*" component={() => <Navigate href="/app" />} />
     </Router>
   );
 }
