@@ -1,5 +1,6 @@
-import { createResource, For, Show } from 'solid-js';
+import { createSignal, onMount, For, Show } from 'solid-js';
 import { A } from '@solidjs/router';
+import { Title, Meta } from '@solidjs/meta';
 
 interface LicenseItem {
   name: string;
@@ -9,26 +10,30 @@ interface LicenseItem {
   type: string;
 }
 
-import { isServer } from 'solid-js/web';
-
-const fetchLicenses = async () => {
-  if (isServer) return [];
-  try {
-    const res = await fetch('/third-party-licenses.json');
-    if (!res.ok) throw new Error('Failed to fetch licenses');
-    return await res.json() as LicenseItem[];
-  } catch (err) {
-    console.error(err);
-    return [];
-  }
-};
-
 export default function Licenses() {
-  const [licenses] = createResource(fetchLicenses);
+  const [licenses, setLicenses] = createSignal<LicenseItem[]>([]);
+  const [loading, setLoading] = createSignal(true);
+
+  onMount(async () => {
+    try {
+      const res = await fetch('/third-party-licenses.json');
+      if (res.ok) {
+        setLicenses(await res.json());
+      }
+    } catch(err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  });
 
   return (
     <div style="padding: 32px; max-width: 800px; margin: 0 auto;">
-      <h1 style="color: var(--accent); margin-bottom: 24px;">ライセンス</h1>
+      <Title>ライセンス - PDF翻訳</Title>
+      <Meta name="description" content="PDF翻訳Webアプリのライセンス、使用しているOSS、AGPL-3.0コンポーネント、第三者ライセンス情報を掲載しています。" />
+      <link rel="canonical" href="https://pdftr.pages.dev/licenses" />
+
+      <h1 style="color: var(--accent); margin-bottom: 24px;">ライセンス情報</h1>
       <A href="/" style="display: inline-block; margin-bottom: 24px; color: var(--accent); text-decoration: none;">&larr; アップロード画面へ戻る</A>
 
       <div class="panel" style="margin-bottom: 24px; padding: 24px; border-left: 4px solid var(--danger);">
@@ -63,7 +68,7 @@ export default function Licenses() {
         <h2 style="margin-top: 0; color: var(--accent);">主要な依存ライブラリ</h2>
         <p style="margin-bottom: 16px;">このプロジェクトは以下のオープンソースソフトウェアを利用しています。</p>
 
-        <Show when={licenses.loading}>
+        <Show when={loading()}>
           <div>読み込み中...</div>
         </Show>
         <Show when={licenses() && licenses()!.length > 0}>

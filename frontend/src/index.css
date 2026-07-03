@@ -3,9 +3,10 @@
   --panel-bg: rgba(31, 41, 55, 0.8);
   --border: #374151;
   --text: #f3f4f6;
-  --text-muted: #9ca3af;
-  --primary: #3b82f6;
-  --primary-hover: #2563eb;
+  --text-muted: #b3b8c2;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --accent: var(--primary);
   --danger: #ef4444;
   --success: #10b981;
 }
@@ -38,15 +39,19 @@ a:hover { text-decoration: underline; }
 .btn {
   display: inline-block;
   background: var(--primary);
-  color: #fff;
+  color: #ffffff;
   border: none;
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
 }
-.btn:hover { background: var(--primary-hover); text-decoration: none; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:hover:not(:disabled) { background: var(--primary-hover); text-decoration: none; }
+.btn:disabled { 
+  background: #374151; 
+  color: #b3b8c2; 
+  cursor: not-allowed; 
+}
 
 .btn-danger { background: var(--danger); }
 .btn-danger:hover { background: #dc2626; }
@@ -432,7 +437,7 @@ th { color: var(--text-muted); font-weight: normal; }
 }
 
 .provider-meta-label {
-  color: #6b7280;
+  color: var(--text-muted);
   width: 70px;
 }
 
@@ -474,13 +479,13 @@ th { color: var(--text-muted); font-weight: normal; }
 
 .status-danger {
   background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
+  color: #fca5a5;
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
 .status-disabled {
   background: rgba(107, 114, 128, 0.15);
-  color: #9ca3af;
+  color: #cbd5e1;
   border: 1px solid rgba(107, 114, 128, 0.3);
 }
 
@@ -499,7 +504,7 @@ th { color: var(--text-muted); font-weight: normal; }
 
 .alert-error {
   background: rgba(239, 68, 68, 0.1);
-  color: #f87171;
+  color: #fca5a5;
   border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
