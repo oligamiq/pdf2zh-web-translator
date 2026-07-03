@@ -9,97 +9,11 @@ const distDir = path.join(rootDir, 'frontend', 'dist');
 
 const SITE_URL = process.env.PUBLIC_SITE_URL || 'https://pdftr.pages.dev';
 
-const pages = [
-  {
-    route: '/about',
-    title: '利用制限と注意事項 - PDF翻訳',
-    description: 'PDF翻訳Webアプリの利用制限、保存期間、APIキー、外部サービス利用時の注意事項を説明します。',
-    ogDescription: 'PDF翻訳Webアプリの利用制限、保存期間、APIキー、外部サービス利用時の注意事項を説明します。',
-    content: `
-      <div style="padding: 24px; max-width: 800px; margin: 0 auto; font-family: sans-serif;">
-        <h1>利用制限と注意事項</h1>
-        <p>PDFをアップロードすると、翻訳済みPDFと対訳PDFを生成してダウンロードできます。</p>
-        <ul>
-          <li>ゲスト利用: PDFは5 MiBまで、1日3件まで。</li>
-          <li>ログイン利用: PDFは20 MiBまで、1日10件まで。</li>
-        </ul>
-        <h2>外部サービスについて</h2>
-        <p>本サービスは翻訳処理に外部APIを利用する場合があります。</p>
-        <a href="/licenses">ライセンスを見る</a>
-      </div>
-    `
-  },
-  {
-    route: '/licenses',
-    title: 'ライセンス - PDF翻訳',
-    description: 'PDF翻訳Webアプリのライセンス、使用しているOSS、AGPL-3.0コンポーネント、第三者ライセンス情報を掲載しています。',
-    ogDescription: 'PDF翻訳Webアプリのライセンス、使用しているOSS、AGPL-3.0コンポーネント、第三者ライセンス情報を掲載しています。',
-    content: `
-      <main style="padding: 24px; max-width: 800px; margin: 0 auto; font-family: sans-serif;">
-        <h1>ライセンス</h1>
 
-        <section>
-          <h2>このアプリのライセンス</h2>
-          <p>
-            このアプリの独自コードは MIT License のもとで公開されています。
-            ソースコードは
-            <a href="https://github.com/oligamiq/pdf2zh-web-translator">
-              GitHub repository
-            </a>
-            で確認できます。
-          </p>
-        </section>
-
-        <section>
-          <h2>重要なライセンス上の注意</h2>
-          <p>
-            このアプリは AGPL-3.0 ライセンスで提供されている pdf2zh-next を利用しています。
-            独自コードはMITですが、pdf2zh-next などの第三者コンポーネントはそれぞれのライセンスに従います。
-          </p>
-        </section>
-      </main>
-    `
-  }
-];
 
 function prerender() {
-  const templatePath = path.join(distDir, 'index.html');
-  if (!fs.existsSync(templatePath)) {
-    console.error('dist/index.html not found. Build first.');
-    process.exit(1);
-  }
-
-  let template = fs.readFileSync(templatePath, 'utf-8');
-
-  // Replace base URL if PUBLIC_SITE_URL is set
-  if (SITE_URL !== 'https://pdftr.pages.dev') {
-    template = template.replaceAll('https://pdftr.pages.dev', SITE_URL);
-  }
-
-  for (const page of pages) {
-    let html = template.replace(/<div id="root">[\s\S]*?<\/div>/, '<div id="root">' + page.content + '</div>');
-    
-    // Replace SEO tags
-    html = html.replace(/<title>.*?<\/title>/, '<title>' + page.title + '</title>');
-    html = html.replace(/<meta name="description" content=".*?" \/>/, '<meta name="description" content="' + page.description + '" />');
-    html = html.replace(/<link rel="canonical" href=".*?" \/>/, '<link rel="canonical" href="' + SITE_URL + page.route + '" />');
-    html = html.replace(/<meta property="og:title" content=".*?" \/>/, '<meta property="og:title" content="' + page.title + '" />');
-    html = html.replace(/<meta property="og:description" content=".*?" \/>/, '<meta property="og:description" content="' + page.ogDescription + '" />');
-    html = html.replace(/<meta property="og:url" content=".*?" \/>/, '<meta property="og:url" content="' + SITE_URL + page.route + '" />');
-    html = html.replace(/<meta name="twitter:title" content=".*?" \/>/, '<meta name="twitter:title" content="' + page.title + '" />');
-    html = html.replace(/<meta name="twitter:description" content=".*?" \/>/, '<meta name="twitter:description" content="' + page.ogDescription + '" />');
-    
-    const routeName = page.route.replace(/^\//, ''); // e.g. "about"
-    
-    // Write as about/index.html (for /about/ requests)
-    const targetDir = path.join(distDir, routeName);
-    fs.mkdirSync(targetDir, { recursive: true });
-    fs.writeFileSync(path.join(targetDir, 'index.html'), html);
-    console.log(`Prerendered ${page.route}/index.html`);
-
-    // Write as about.html (for /about requests to avoid 308 redirect)
-    fs.writeFileSync(path.join(distDir, routeName + '.html'), html);
-    console.log(`Prerendered ${page.route}.html`);
+  if (!fs.existsSync(distDir)) {
+    fs.mkdirSync(distDir, { recursive: true });
   }
 
   // Generate sitemap.xml
@@ -133,10 +47,22 @@ Disallow: /jobs
 Disallow: /api
 Disallow: /agent
 Disallow: /internal
+Disallow: /app
 
 Sitemap: ${SITE_URL}/sitemap.xml`;
   fs.writeFileSync(path.join(distDir, 'robots.txt'), robots);
   console.log('Generated robots.txt');
+
+  // Fix _redirects (SolidStart/Nitro injects an invalid /* /404.html 404 rule for CF Pages)
+  const redirectsPath = path.join(distDir, '_redirects');
+  if (fs.existsSync(redirectsPath)) {
+    let redirects = fs.readFileSync(redirectsPath, 'utf-8');
+    if (redirects.includes('/* /404.html 404')) {
+      redirects = redirects.replace(/\/\* \/404\.html 404\n?/g, '');
+      fs.writeFileSync(redirectsPath, redirects);
+      console.log('Removed invalid 404 fallback from _redirects');
+    }
+  }
 }
 
 prerender();

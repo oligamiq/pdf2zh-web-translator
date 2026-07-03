@@ -1,14 +1,20 @@
 import { A } from '@solidjs/router';
 
+import { Title, Meta } from '@solidjs/meta';
+
 export default function About() {
   return (
     <div style="padding: 32px; max-width: 800px; margin: 0 auto;">
+      <Title>利用制限と注意事項 - PDF翻訳</Title>
+      <Meta name="description" content="PDF翻訳Webアプリの利用制限、保存期間、APIキー、外部サービス利用時の注意事項を説明します。" />
+      <link rel="canonical" href="https://pdftr.pages.dev/about" />
+
       <h1 style="color: var(--accent); margin-bottom: 24px;">利用制限と注意事項</h1>
       <A href="/" style="display: inline-block; margin-bottom: 24px; color: var(--accent); text-decoration: none;">&larr; アップロード画面へ戻る</A>
       
       <div class="panel" style="margin-bottom: 24px; padding: 24px;">
         <h2 style="margin-top: 0; color: var(--accent);">このサイトについて</h2>
-        <p>pdf2zhの公式Web UIです。お好みのLLM Providerを使ってPDFドキュメントを多言語に翻訳できます。</p>
+        <p>お好みのLLM Providerを使ってPDFドキュメントを多言語に翻訳できるWebアプリです。</p>
       </div>
 
       <div class="panel" style="margin-bottom: 24px; padding: 24px;">
