@@ -202,7 +202,7 @@ export default function AdvancedSettings() {
       <div class="header" style="border-bottom: none; padding-bottom: 0;">
         <h1 style="margin:0; font-size: 1.5rem;">高度なAPIルーティング</h1>
         <div style="display: flex; gap: 12px;">
-          <A href="/settings" class="button button-secondary">← 基本設定へ戻る</A>
+          <A href="/app/settings" class="button button-secondary">← 基本設定へ戻る</A>
         </div>
       </div>
 

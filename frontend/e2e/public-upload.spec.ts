@@ -95,7 +95,7 @@ test.describe('Public Upload UI', () => {
       route.fallback();
     });
 
-    await page.goto('/');
+    await page.goto('/app');
 
     // Check Guest mode info box
     await expect(page.locator('summary', { hasText: 'ゲスト利用' })).toBeVisible();
@@ -117,7 +117,7 @@ test.describe('Public Upload UI', () => {
   });
   
   test('should show guest warning on settings page', async ({ page }) => {
-    await page.goto('/settings');
+    await page.goto('/app/settings');
     await expect(page.locator('text=設定はログイン後に利用可能です。')).toBeVisible();
     await expect(page.locator('text=サインインして、翻訳先言語やAPIプロバイダを設定してください。')).toBeVisible();
   });
@@ -137,7 +137,7 @@ test.describe('Public Upload UI', () => {
       route.fallback();
     });
 
-    await page.goto('/');
+    await page.goto('/app');
 
     // Wait for Turnstile token to be ready
     await expect(page.getByTestId('turnstile-ready')).toBeAttached();

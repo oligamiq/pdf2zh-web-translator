@@ -206,7 +206,7 @@ export default function Dashboard() {
                           {u().email ?? "Signed in"}
                         </div>
 
-                        <A href="/settings" role="menuitem" onClick={() => setAccountMenuOpen(false)}>
+                        <A href="/app/settings" role="menuitem" onClick={() => setAccountMenuOpen(false)}>
                           設定
                         </A>
 

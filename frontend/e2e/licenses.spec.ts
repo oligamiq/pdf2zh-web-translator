@@ -59,7 +59,7 @@ test.describe('Licenses page', () => {
         }
       });
     });
-    await page.goto('/');
+    await page.goto('/app');
     
     // Wait for limits to load
     await expect(page.locator('summary', { hasText: 'ゲスト利用' })).toBeVisible();
@@ -78,7 +78,7 @@ test.describe('Licenses page', () => {
     // Mock user login
     await setupAuthenticatedUser(page);
     
-    await page.goto('/');
+    await page.goto('/app');
     
     // Open menu
     await page.getByTestId('account-menu-button').click();

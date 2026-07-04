@@ -258,7 +258,7 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
             <p style={{ margin: '0 0 24px 0' }}>APIキーが設定されていません。設定画面でAPIキーを登録してください。</p>
             <div style={{ display: 'flex', gap: '12px', "justify-content": 'flex-end' }}>
               <button class="btn btn-secondary" onClick={() => setShowApiKeyModal(false)} style={{ background: 'transparent', border: '1px solid var(--border)' }}>キャンセル</button>
-              <A href="/settings" class="btn" onClick={() => setShowApiKeyModal(false)}>設定へ移動</A>
+              <A href="/app/settings" class="btn" onClick={() => setShowApiKeyModal(false)}>設定へ移動</A>
             </div>
           </div>
         </div>

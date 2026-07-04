@@ -63,6 +63,25 @@ Sitemap: ${SITE_URL}/sitemap.xml`;
       console.log('Removed invalid 404 fallback from _redirects');
     }
   }
+  // Fix _routes.json to exclude dynamically generated static files
+  const routesPath = path.join(distDir, '_routes.json');
+  if (fs.existsSync(routesPath)) {
+    try {
+      const routes = JSON.parse(fs.readFileSync(routesPath, 'utf-8'));
+      if (routes.exclude && Array.isArray(routes.exclude)) {
+        if (!routes.exclude.includes('/robots.txt')) {
+          routes.exclude.push('/robots.txt');
+        }
+        if (!routes.exclude.includes('/sitemap.xml')) {
+          routes.exclude.push('/sitemap.xml');
+        }
+        fs.writeFileSync(routesPath, JSON.stringify(routes, null, 2));
+        console.log('Added robots.txt and sitemap.xml to _routes.json exclude list');
+      }
+    } catch (err) {
+      console.error('Failed to parse or update _routes.json:', err);
+    }
+  }
 }
 
 prerender();
