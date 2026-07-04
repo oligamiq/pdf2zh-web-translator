@@ -35,7 +35,7 @@ test.describe('UX Improvements', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/app');
 
     // Check health badge
     await expect(page.getByText('server: online')).toBeVisible();
@@ -90,7 +90,7 @@ test.describe('UX Improvements', () => {
       });
     });
 
-    await page.goto('/settings/advanced');
+    await page.goto('/app/settings/advanced');
     
     // Verify Default URL text does not appear
     await expect(page.locator('text=デフォルトのURL')).not.toBeVisible();
@@ -108,7 +108,7 @@ test.describe('UX Improvements', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/app');
     await expect(page.getByText('server: offline')).toBeVisible();
   });
 });
@@ -119,7 +119,7 @@ test.describe('Mobile Layout', () => {
     await setupAuthenticatedUser(page);
     await setupDefaultApiMocks(page);
 
-    await page.goto('/');
+    await page.goto('/app');
 
     const brand = page.getByTestId('brand-title');
     const account = page.getByTestId('account-menu-button');
@@ -143,7 +143,7 @@ test.describe('Mobile Layout', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await setupDefaultApiMocks(page);
 
-    await page.goto('/');
+    await page.goto('/app');
 
     const brand = page.getByTestId('brand-title');
     const guestAuth = page.getByTestId('guest-auth-button');
@@ -166,7 +166,7 @@ test.describe('Mobile Layout', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await setupDefaultApiMocks(page);
 
-    await page.goto('/');
+    await page.goto('/app');
 
     const card = page.getByTestId('upload-card');
     const button = page.getByTestId('file-select-button');
@@ -191,7 +191,7 @@ test.describe('Mobile Layout', () => {
     test(`mobile upload CTA stays inside card at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 844 });
       await setupDefaultApiMocks(page);
-      await page.goto('/');
+      await page.goto('/app');
 
       const cardBox = await page.getByTestId('upload-card').boundingBox();
       const buttonBox = await page.getByTestId('file-select-button').boundingBox();
@@ -215,7 +215,7 @@ test.describe('Mobile Layout', () => {
       };
     });
 
-    await page.goto('/');
+    await page.goto('/app');
 
     const login = page.getByTestId('guest-auth-button');
     await expect(login).toBeEnabled();
@@ -239,7 +239,7 @@ test.describe('Mobile Layout', () => {
       (window as any).__e2e_simulate_login_hang = true;
     });
 
-    await page.goto('/');
+    await page.goto('/app');
 
     const login = page.getByTestId('guest-auth-button');
     await expect(login).toBeEnabled();
@@ -299,7 +299,7 @@ test.describe('Mobile Layout', () => {
       });
     });
 
-    await page.goto("/jobs/test-job-id");
+    await page.goto("/app/jobs/test-job-id");
 
     const headings = page.getByRole("heading", { name: "Live Log Tail" });
     await expect(headings).toHaveCount(1);

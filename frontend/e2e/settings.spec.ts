@@ -57,7 +57,7 @@ test.describe('Settings UI', () => {
       route.fallback();
     });
 
-    await page.goto('/');
+    await page.goto('/app');
     
     // Go to Settings
     await page.getByTestId('account-menu-button').click();
@@ -111,7 +111,7 @@ test.describe('Settings UI', () => {
       await dialog.accept();
     });
 
-    await page.goto('/settings/advanced');
+    await page.goto('/app/settings/advanced');
     
     await page.getByTestId('add-provider-button').click();
     await expect(page.locator('text=Providerを追加').first()).toBeVisible();

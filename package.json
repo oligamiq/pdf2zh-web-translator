@@ -23,6 +23,7 @@
     "deploy:worker": "npm --prefix worker run deploy",
     "deploy:frontend": "npm --prefix frontend run deploy",
     "deploy": "npm run preflight && npm run deploy:worker && npm run deploy:frontend",
+    "deploy:prod": "npm --workspace frontend run deploy:prod",
     "check:prod-bundle": "npm --prefix frontend run check:prod-bundle",
     "test:router": "./scripts/e2e-router-smoke.sh",
     "verify": "npm run build && npm run check:prod-bundle && npm run test:e2e && npm run test:router && npm run preflight",
