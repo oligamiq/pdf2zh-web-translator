@@ -15,21 +15,47 @@ test.describe('SSG and SEO requirements', () => {
     expect(fs.existsSync(sitemapPath)).toBe(true);
     expect(fs.existsSync(robotsPath)).toBe(true);
 
+    // Helper to check head metadata
+    function getHead(html: string) {
+      return html.slice(0, html.indexOf("</head>"));
+    }
+
+    function expectHeadMetadata(
+      html: string,
+      expected: {
+        title: string;
+        description: string;
+        canonical: string;
+      }
+    ) {
+      const head = getHead(html);
+      expect(head).toContain(expected.title);
+      expect(head).toContain('name="description"');
+      expect(head).toContain(expected.description);
+      expect(head).toContain('rel="canonical"');
+      expect(head).toContain(`href="${expected.canonical}"`);
+      expect(head).not.toContain("noindex");
+    }
+
     // about content & SEO
     const aboutContent = fs.readFileSync(aboutHtmlPath, 'utf8');
     expect(aboutContent).toContain('利用制限と注意事項');
-    expect(aboutContent).toContain('<title>利用制限と注意事項 - PDF翻訳</title>');
-    expect(aboutContent).toContain('<meta name="description" content="PDF翻訳Webアプリの利用制限、保存期間、APIキー、外部サービス利用時の注意事項を説明します。">');
-    expect(aboutContent).toContain('<link rel="canonical" href="https://pdftr.pages.dev/about">');
+    expectHeadMetadata(aboutContent, {
+      title: "利用制限と注意事項 - PDF翻訳",
+      description: "PDF翻訳Webアプリの利用制限、保存期間、APIキー、外部サービス利用時の注意事項を説明します。",
+      canonical: "https://pdftr.pages.dev/about",
+    });
 
     // licenses content & SEO
     const licensesContent = fs.readFileSync(licensesHtmlPath, 'utf8');
     expect(licensesContent).toContain('AGPL-3.0');
     expect(licensesContent).toContain('pdf2zh-next');
     expect(licensesContent).toContain('github.com/oligamiq/pdf2zh-web-translator');
-    expect(licensesContent).toContain('<title>ライセンス - PDF翻訳</title>');
-    expect(licensesContent).toContain('<meta name="description" content="PDF翻訳Webアプリのライセンス、使用しているOSS、AGPL-3.0コンポーネント、第三者ライセンス情報を掲載しています。">');
-    expect(licensesContent).toContain('<link rel="canonical" href="https://pdftr.pages.dev/licenses">');
+    expectHeadMetadata(licensesContent, {
+      title: "ライセンス - PDF翻訳",
+      description: "PDF翻訳Webアプリのライセンス、使用しているOSS、AGPL-3.0コンポーネント、第三者ライセンス情報を掲載しています。",
+      canonical: "https://pdftr.pages.dev/licenses",
+    });
 
     // sitemap checks
     const sitemapContent = fs.readFileSync(sitemapPath, 'utf8');

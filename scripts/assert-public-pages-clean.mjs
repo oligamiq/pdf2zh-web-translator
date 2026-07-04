@@ -37,17 +37,29 @@ for (const target of targets) {
     continue;
   }
 
-  let content = fs.readFileSync(filePath, 'utf-8');
+  let html = fs.readFileSync(filePath, 'utf-8');
   
-  // SolidStart injects window.manifest and modulepreloads for chunks.
-  // We want to ignore these because they don't execute on the public LP.
-  content = content.replace(/<script>window\.manifest\s*=\s*\{.*?\}<\/script>/g, '');
-  content = content.replace(/<link[^>]*rel="modulepreload"[^>]*>/g, '');
+  const head = html.split("</head>")[0] ?? "";
 
+  // 1. Check head content
   for (const marker of prohibitedMarkers) {
-    if (content.includes(marker)) {
-      console.error(`ERROR: Prohibited marker "${marker}" found in ${target}`);
+    if (head.includes(marker)) {
+      console.error(`ERROR: Forbidden app-only marker in <head>: ${marker} (${target})`);
       failed = true;
+    }
+  }
+
+  // 2. Check direct script or link tags
+  const directScriptOrPreloadMatches = html.match(
+    /<(script|link)[^>]+(?:src|href)="[^"]+"[^>]*>/g
+  ) ?? [];
+
+  for (const tag of directScriptOrPreloadMatches) {
+    for (const marker of ["firebase", "authState", "UploadForm", "JobList", "Dashboard"]) {
+      if (tag.includes(marker)) {
+        console.error(`ERROR: Forbidden app-only asset tag in ${target}: ${tag}`);
+        failed = true;
+      }
     }
   }
 }
