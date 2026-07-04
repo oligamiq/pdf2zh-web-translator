@@ -1,4 +1,4 @@
-import process from 'node:process';globalThis._importMeta_={url:import.meta.url,env:process.env};export { c as closePrerenderer, l as localFetch } from './chunks/nitro/nitro.mjs';
+import process from 'node:process';globalThis._importMeta_={url:import.meta.url,env:process.env};export { b as closePrerenderer, l as localFetch } from './chunks/nitro/nitro.mjs';
 import 'file:///srv/pdf2zh-web/v2/node_modules/destr/dist/index.mjs';
 import 'file:///srv/pdf2zh-web/v2/node_modules/nitropack/node_modules/h3/dist/index.mjs';
 import 'file:///srv/pdf2zh-web/v2/node_modules/hookable/dist/index.mjs';
@@ -27,4 +27,6 @@ import 'file:///srv/pdf2zh-web/v2/node_modules/solid-js/web/storage/dist/storage
 import 'file:///srv/pdf2zh-web/v2/node_modules/h3/dist/index.mjs';
 import 'file:///srv/pdf2zh-web/v2/node_modules/seroval/dist/esm/production/index.mjs';
 import 'file:///srv/pdf2zh-web/v2/node_modules/seroval-plugins/dist/esm/production/web.mjs';
+import 'file:///srv/pdf2zh-web/v2/frontend/node_modules/firebase/app/dist/index.mjs';
+import 'file:///srv/pdf2zh-web/v2/frontend/node_modules/firebase/auth/dist/index.mjs';
 //# sourceMappingURL=index.mjs.map

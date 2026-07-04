@@ -54,7 +54,7 @@ test.describe('Layout & Long Text Resistance', () => {
 
     for (const vp of viewports) {
       await page.setViewportSize(vp);
-      await page.goto('/');
+      await page.goto('/app');
 
       const row = page.getByTestId('job-row').first();
       const filenameLocator = row.getByTestId('job-filename');
@@ -137,7 +137,7 @@ test.describe('Layout & Long Text Resistance', () => {
 
     for (const vp of viewports) {
       await page.setViewportSize(vp);
-      await page.goto('/jobs/job-1');
+      await page.goto('/app/jobs/job-1');
 
       const summary = page.getByTestId('job-summary');
       const filenameLocator = summary.getByTestId('job-summary-filename');
@@ -196,7 +196,7 @@ test.describe('Layout & Long Text Resistance', () => {
 
     for (const vp of viewports) {
       await page.setViewportSize(vp);
-      await page.goto('/');
+      await page.goto('/app');
 
       const brand = page.locator('.brand');
       // aria-label="アカウントメニュー" でボタンを取得できる
@@ -286,7 +286,7 @@ test.describe('Layout & Long Text Resistance', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/app');
 
     const accountMenuBtn = page.getByTestId('account-menu-button');
     const settingsBtn = page.getByRole('menuitem', { name: '設定' });
@@ -302,7 +302,7 @@ test.describe('Layout & Long Text Resistance', () => {
     await expect(page).toHaveURL(/.*\/settings/);
     
     // Go back to check about
-    await page.goto('/');
+    await page.goto('/app');
     await accountMenuBtn.click();
     await expect(aboutBtn).toBeVisible();
     await aboutBtn.click();
@@ -311,7 +311,7 @@ test.describe('Layout & Long Text Resistance', () => {
     await expect(page).toHaveURL(/.*\/about/);
 
     // Go back to check sign out
-    await page.goto('/');
+    await page.goto('/app');
     await accountMenuBtn.click();
     await expect(signoutBtn).toBeVisible();
 
@@ -336,7 +336,7 @@ test.describe('Layout & Long Text Resistance', () => {
 
   test("account menu hover highlight stays inside menu bounds", async ({ page }) => {
     await setupAuthenticatedUser(page);
-    await page.goto("/");
+    await page.goto("/app");
 
     await page.getByTestId("account-menu-button").click();
 
@@ -381,7 +381,7 @@ test.describe('Layout & Long Text Resistance', () => {
       });
     });
 
-    await page.goto("/");
+    await page.goto("/app");
 
     const statuses = page.getByTestId("job-status");
     await expect(statuses).toHaveCount(2);
@@ -398,7 +398,7 @@ test.describe('Layout & Long Text Resistance', () => {
 
   test("dragging account menu text does not show upload drop overlay", async ({ page }) => {
     await setupAuthenticatedUser(page);
-    await page.goto("/");
+    await page.goto("/app");
 
     await page.getByTestId("account-menu-button").click();
 
@@ -421,7 +421,8 @@ test.describe('Layout & Long Text Resistance', () => {
   });
 
   test("file drag still shows upload drop overlay", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/app");
+    await expect(page.getByTestId("pdf-file-input")).toBeEnabled();
 
     await page.evaluate(() => {
       const dt = new DataTransfer();

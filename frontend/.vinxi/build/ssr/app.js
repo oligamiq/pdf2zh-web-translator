@@ -1,1 +1,1 @@
-import{ssr as a,ssrHydrationKey as t}from"solid-js/web";var e=["<main",' class="container" style="padding:40px;text-align:center;"><h1>PDF翻訳アプリ</h1><p>次のPhaseで既存のアップロード画面をここに移動します。</p></main>'];function r(){return a(e,t())}export{r as default};
+import{onMount as n}from"solid-js";import{s as u,a}from"./assets/authState-BZctefYf.js";function i(t){return n(()=>{import("./assets/firebase-D_DCxAHy.js").then(({auth:r})=>{import("firebase/auth").then(({onAuthStateChanged:e})=>{e(r,o=>{u(o),a(!0)})})})}),t.children}export{i as default};

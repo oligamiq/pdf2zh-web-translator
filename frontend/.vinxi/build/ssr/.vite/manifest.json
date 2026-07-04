@@ -1,14 +1,89 @@
 {
-  "_components-CbtQCEIg.js": {
-    "file": "assets/components-CbtQCEIg.js",
-    "name": "components",
+  "_authState-BZctefYf.js": {
+    "file": "assets/authState-BZctefYf.js",
+    "name": "authState"
+  },
+  "_clientOnly-zGwykQvR.js": {
+    "file": "assets/clientOnly-zGwykQvR.js",
+    "name": "clientOnly"
+  },
+  "_components-CRSEIZ-T.js": {
+    "file": "assets/components-CRSEIZ-T.js",
+    "name": "components"
+  },
+  "_index-BSDoL9aR.js": {
+    "file": "assets/index-BSDoL9aR.js",
+    "name": "index"
+  },
+  "src/api.ts": {
+    "file": "assets/api-BVYrDQoa.js",
+    "name": "api",
+    "src": "src/api.ts",
+    "isDynamicEntry": true,
     "imports": [
-      "_routing-BHSIbT1K.js"
+      "src/firebase.ts",
+      "_authState-BZctefYf.js"
     ]
   },
-  "_routing-BHSIbT1K.js": {
-    "file": "assets/routing-BHSIbT1K.js",
-    "name": "routing"
+  "src/firebase.ts": {
+    "file": "assets/firebase-D_DCxAHy.js",
+    "name": "firebase",
+    "src": "src/firebase.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "_authState-BZctefYf.js"
+    ]
+  },
+  "src/pages/AdvancedSettings.tsx": {
+    "file": "assets/AdvancedSettings-KvVP6GjM.js",
+    "name": "AdvancedSettings",
+    "src": "src/pages/AdvancedSettings.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/api.ts",
+      "_authState-BZctefYf.js",
+      "_components-CRSEIZ-T.js",
+      "src/firebase.ts"
+    ]
+  },
+  "src/pages/Dashboard.tsx": {
+    "file": "assets/Dashboard-BRfvzQ_2.js",
+    "name": "Dashboard",
+    "src": "src/pages/Dashboard.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/api.ts",
+      "_components-CRSEIZ-T.js",
+      "_authState-BZctefYf.js",
+      "src/firebase.ts"
+    ],
+    "dynamicImports": [
+      "src/api.ts"
+    ]
+  },
+  "src/pages/JobDetail.tsx": {
+    "file": "assets/JobDetail-D-9qnIq9.js",
+    "name": "JobDetail",
+    "src": "src/pages/JobDetail.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/api.ts",
+      "_authState-BZctefYf.js",
+      "_components-CRSEIZ-T.js",
+      "src/firebase.ts"
+    ]
+  },
+  "src/pages/Settings.tsx": {
+    "file": "assets/Settings-3Vgv_c5d.js",
+    "name": "Settings",
+    "src": "src/pages/Settings.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/api.ts",
+      "_authState-BZctefYf.js",
+      "_components-CRSEIZ-T.js",
+      "src/firebase.ts"
+    ]
   },
   "src/routes/[...404].tsx?pick=default&pick=$css": {
     "file": "_...404_.js",
@@ -17,8 +92,7 @@
     "isEntry": true,
     "isDynamicEntry": true,
     "imports": [
-      "_components-CbtQCEIg.js",
-      "_routing-BHSIbT1K.js"
+      "_components-CRSEIZ-T.js"
     ]
   },
   "src/routes/about.tsx?pick=default&pick=$css": {
@@ -28,8 +102,7 @@
     "isEntry": true,
     "isDynamicEntry": true,
     "imports": [
-      "_components-CbtQCEIg.js",
-      "_routing-BHSIbT1K.js"
+      "_components-CRSEIZ-T.js"
     ]
   },
   "src/routes/app.tsx?pick=default&pick=$css": {
@@ -37,17 +110,78 @@
     "name": "app",
     "src": "src/routes/app.tsx?pick=default&pick=$css",
     "isEntry": true,
-    "isDynamicEntry": true
+    "isDynamicEntry": true,
+    "imports": [
+      "_authState-BZctefYf.js"
+    ],
+    "dynamicImports": [
+      "src/firebase.ts"
+    ]
+  },
+  "src/routes/app/index.tsx?pick=default&pick=$css": {
+    "file": "index.js",
+    "name": "index",
+    "src": "src/routes/app/index.tsx?pick=default&pick=$css",
+    "isEntry": true,
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-BSDoL9aR.js",
+      "_clientOnly-zGwykQvR.js"
+    ],
+    "dynamicImports": [
+      "src/pages/Dashboard.tsx"
+    ]
+  },
+  "src/routes/app/jobs/[id].tsx?pick=default&pick=$css": {
+    "file": "_id_.js",
+    "name": "_id_",
+    "src": "src/routes/app/jobs/[id].tsx?pick=default&pick=$css",
+    "isEntry": true,
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-BSDoL9aR.js",
+      "_clientOnly-zGwykQvR.js"
+    ],
+    "dynamicImports": [
+      "src/pages/JobDetail.tsx"
+    ]
+  },
+  "src/routes/app/settings/advanced.tsx?pick=default&pick=$css": {
+    "file": "advanced.js",
+    "name": "advanced",
+    "src": "src/routes/app/settings/advanced.tsx?pick=default&pick=$css",
+    "isEntry": true,
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-BSDoL9aR.js",
+      "_clientOnly-zGwykQvR.js"
+    ],
+    "dynamicImports": [
+      "src/pages/AdvancedSettings.tsx"
+    ]
+  },
+  "src/routes/app/settings/index.tsx?pick=default&pick=$css": {
+    "file": "index2.js",
+    "name": "index",
+    "src": "src/routes/app/settings/index.tsx?pick=default&pick=$css",
+    "isEntry": true,
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-BSDoL9aR.js",
+      "_clientOnly-zGwykQvR.js"
+    ],
+    "dynamicImports": [
+      "src/pages/Settings.tsx"
+    ]
   },
   "src/routes/index.tsx?pick=default&pick=$css": {
-    "file": "index.js",
+    "file": "index3.js",
     "name": "index",
     "src": "src/routes/index.tsx?pick=default&pick=$css",
     "isEntry": true,
     "isDynamicEntry": true,
     "imports": [
-      "_components-CbtQCEIg.js",
-      "_routing-BHSIbT1K.js"
+      "_components-CRSEIZ-T.js"
     ]
   },
   "src/routes/licenses.tsx?pick=default&pick=$css": {
@@ -57,8 +191,7 @@
     "isEntry": true,
     "isDynamicEntry": true,
     "imports": [
-      "_components-CbtQCEIg.js",
-      "_routing-BHSIbT1K.js"
+      "_components-CRSEIZ-T.js"
     ]
   },
   "virtual:$vinxi/handler/ssr": {
@@ -67,13 +200,24 @@
     "src": "virtual:$vinxi/handler/ssr",
     "isEntry": true,
     "imports": [
-      "_routing-BHSIbT1K.js"
+      "_index-BSDoL9aR.js",
+      "src/firebase.ts",
+      "_authState-BZctefYf.js",
+      "_components-CRSEIZ-T.js"
     ],
     "dynamicImports": [
       "src/routes/[...404].tsx?pick=default&pick=$css",
       "src/routes/[...404].tsx?pick=default&pick=$css",
       "src/routes/about.tsx?pick=default&pick=$css",
       "src/routes/about.tsx?pick=default&pick=$css",
+      "src/routes/app/index.tsx?pick=default&pick=$css",
+      "src/routes/app/index.tsx?pick=default&pick=$css",
+      "src/routes/app/jobs/[id].tsx?pick=default&pick=$css",
+      "src/routes/app/jobs/[id].tsx?pick=default&pick=$css",
+      "src/routes/app/settings/advanced.tsx?pick=default&pick=$css",
+      "src/routes/app/settings/advanced.tsx?pick=default&pick=$css",
+      "src/routes/app/settings/index.tsx?pick=default&pick=$css",
+      "src/routes/app/settings/index.tsx?pick=default&pick=$css",
       "src/routes/app.tsx?pick=default&pick=$css",
       "src/routes/app.tsx?pick=default&pick=$css",
       "src/routes/index.tsx?pick=default&pick=$css",
@@ -82,7 +226,7 @@
       "src/routes/licenses.tsx?pick=default&pick=$css"
     ],
     "css": [
-      "assets/ssr-DYKmZOZr.css"
+      "assets/ssr-CRg8N-3Q.css"
     ]
   }
 }
