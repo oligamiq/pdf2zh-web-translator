@@ -1,16 +1,7 @@
-import { Title, Meta } from "@solidjs/meta";
-import { clientOnly } from "@solidjs/start";
+import { Navigate, useLocation } from "@solidjs/router";
 
-const DashboardClient = clientOnly(() => import("../../pages/Dashboard"), {
-  lazy: true,
-});
-
-export default function AppIndexPage() {
-  return (
-    <>
-      <Title>PDF翻訳アプリ</Title>
-      <Meta name="robots" content="noindex,nofollow" />
-      <DashboardClient />
-    </>
-  );
+export default function AppIndexRedirect() {
+  const location = useLocation();
+  const search = location.search || "";
+  return <Navigate href={`/${search}`} />;
 }

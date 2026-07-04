@@ -16,9 +16,6 @@ export default function App() {
       )}
     >
       <FileRoutes />
-      <Route path="/settings" component={() => <Navigate href="/app/settings" />} />
-      <Route path="/settings/*" component={() => <Navigate href="/app/settings" />} />
-      <Route path="/jobs/*" component={() => <Navigate href="/app" />} />
     </Router>
   );
 }

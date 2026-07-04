@@ -90,7 +90,7 @@ test.describe('UX Improvements', () => {
       });
     });
 
-    await page.goto('/app/settings/advanced');
+    await page.goto('/settings/advanced');
     
     // Verify Default URL text does not appear
     await expect(page.locator('text=デフォルトのURL')).not.toBeVisible();
@@ -299,7 +299,7 @@ test.describe('Mobile Layout', () => {
       });
     });
 
-    await page.goto("/app/jobs/test-job-id");
+    await page.goto("/jobs/test-job-id");
 
     const headings = page.getByRole("heading", { name: "Live Log Tail" });
     await expect(headings).toHaveCount(1);

@@ -151,7 +151,7 @@ export default function Settings() {
           <div class="settings-card">
             <h2 class="settings-section-title">高度なAPIルーティング</h2>
             <p class="settings-section-desc">Providerは上から順に試行されます。1つが失敗した場合、次の有効なProviderが使用されます。</p>
-            <A href="/app/settings/advanced" class="button button-secondary" style="margin-top: 8px;">高度な設定を開く</A>
+            <A href="/settings/advanced" class="button button-secondary" style="margin-top: 8px;">高度な設定を開く</A>
           </div>
         </Show>
       </Show>

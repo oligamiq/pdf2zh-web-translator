@@ -11,7 +11,6 @@ if (!fs.existsSync(distPath)) {
 }
 
 const targets = [
-  'index.html',
   'about.html',
   'about/index.html',
   'licenses.html',

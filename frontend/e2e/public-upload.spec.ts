@@ -117,7 +117,7 @@ test.describe('Public Upload UI', () => {
   });
   
   test('should show guest warning on settings page', async ({ page }) => {
-    await page.goto('/app/settings');
+    await page.goto('/settings');
     await expect(page.locator('text=設定はログイン後に利用可能です。')).toBeVisible();
     await expect(page.locator('text=サインインして、翻訳先言語やAPIプロバイダを設定してください。')).toBeVisible();
   });

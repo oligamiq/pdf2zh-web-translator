@@ -3,3 +3,6 @@
 
 /jobs*
   X-Robots-Tag: noindex, nofollow
+
+/app*
+  X-Robots-Tag: noindex, nofollow
