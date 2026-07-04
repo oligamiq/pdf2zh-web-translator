@@ -13,6 +13,30 @@ test.describe('UX Improvements', () => {
     });
   });
 
+  test('should render sub-one percent progress correctly and not multiply by 100', async ({ page }) => {
+    await page.route('**/jobs', async route => {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 'job-1',
+            status: 'running',
+            progress_percent: 0.904988976054966,
+            original_filename: 'sub-one.pdf',
+            created_at: new Date().toISOString(),
+          }
+        ]),
+      });
+    });
+
+    await page.goto('/');
+
+    const jobRow = page.getByTestId('job-row').filter({ hasText: 'sub-one.pdf' });
+    await expect(jobRow.getByText('1%')).toBeVisible();
+    await expect(jobRow.getByText('90%')).toBeHidden();
+  });
+
   test('should display job list with new actions, health badge, and 7-day note', async ({ page }) => {
     await page.route('**/jobs', async route => {
       return route.fulfill({

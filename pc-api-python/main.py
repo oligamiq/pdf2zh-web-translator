@@ -15,6 +15,7 @@ import httpx
 import aiofiles
 
 from pdf2zh_next.high_level import do_translate_async_stream, SettingsModel
+import math
 from router import handle_router_request, ROUTER_STATES
 
 app = FastAPI()
@@ -319,9 +320,9 @@ async def agent_loop():
                             v = float(value)
                         except Exception:
                             return None
-                        if 0 <= v <= 1:
-                            v = v * 100
-                        return max(0, min(100, int(round(v))))
+                        if not math.isfinite(v):
+                            return None
+                        return max(0.0, min(100.0, v))
 
                     def iter_exception_chain(exc, seen=None):
                         if seen is None:
@@ -458,9 +459,6 @@ async def agent_loop():
                                         percent = max(last_progress_percent, new_percent)
 
                                     phase = event.get("phase", "processing")
-                                
-                                    if phase == "processing" or ev_type != "finish":
-                                        percent = max(percent, 20)
                                 
                                     if ev_type == "finish":
                                         percent = 100
