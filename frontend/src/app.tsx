@@ -1,4 +1,4 @@
-import { MetaProvider, Title } from "@solidjs/meta";
+import { MetaProvider } from "@solidjs/meta";
 import { Router, Route, Navigate } from "@solidjs/router";
 import { FileRoutes } from "@solidjs/start/router";
 import { Suspense } from "solid-js";
@@ -11,7 +11,7 @@ export default function App() {
     <Router
       root={(props) => (
         <MetaProvider>
-          <Title>PDF翻訳</Title>
+          <title>PDF翻訳</title>
           <GlobalApp>
             <Suspense>{props.children}</Suspense>
           </GlobalApp>

@@ -4,36 +4,32 @@ import path from 'path';
 
 test.describe('SSG and SEO requirements', () => {
   test('build output contains SSG files with required content', async () => {
-    const aboutPath = path.resolve('dist/about/index.html');
-    const licensesPath = path.resolve('dist/licenses/index.html');
-    const aboutHtmlPath = path.resolve('dist/about.html');
-    const licensesHtmlPath = path.resolve('dist/licenses.html');
-    const sitemapPath = path.resolve('dist/sitemap.xml');
-    const robotsPath = path.resolve('dist/robots.txt');
+    const aboutHtmlPath = path.resolve('dist-e2e/about.html');
+    const licensesHtmlPath = path.resolve('dist-e2e/licenses.html');
+    const sitemapPath = path.resolve('dist-e2e/sitemap.xml');
+    const robotsPath = path.resolve('dist-e2e/robots.txt');
 
     // files exist
-    expect(fs.existsSync(aboutPath)).toBe(true);
-    expect(fs.existsSync(licensesPath)).toBe(true);
     expect(fs.existsSync(aboutHtmlPath)).toBe(true);
     expect(fs.existsSync(licensesHtmlPath)).toBe(true);
     expect(fs.existsSync(sitemapPath)).toBe(true);
     expect(fs.existsSync(robotsPath)).toBe(true);
 
     // about content & SEO
-    const aboutContent = fs.readFileSync(aboutPath, 'utf8');
+    const aboutContent = fs.readFileSync(aboutHtmlPath, 'utf8');
     expect(aboutContent).toContain('利用制限と注意事項');
     expect(aboutContent).toContain('<title>利用制限と注意事項 - PDF翻訳</title>');
-    expect(aboutContent).toContain('<meta name="description" content="PDF翻訳Webアプリの利用制限、保存期間、APIキー、外部サービス利用時の注意事項を説明します。" />');
-    expect(aboutContent).toContain('<link rel="canonical" href="https://pdftr.pages.dev/about" />');
+    expect(aboutContent).toContain('<meta name="description" content="PDF翻訳Webアプリの利用制限、保存期間、APIキー、外部サービス利用時の注意事項を説明します。">');
+    expect(aboutContent).toContain('<link rel="canonical" href="https://pdftr.pages.dev/about">');
 
     // licenses content & SEO
-    const licensesContent = fs.readFileSync(licensesPath, 'utf8');
+    const licensesContent = fs.readFileSync(licensesHtmlPath, 'utf8');
     expect(licensesContent).toContain('AGPL-3.0');
     expect(licensesContent).toContain('pdf2zh-next');
     expect(licensesContent).toContain('github.com/oligamiq/pdf2zh-web-translator');
     expect(licensesContent).toContain('<title>ライセンス - PDF翻訳</title>');
-    expect(licensesContent).toContain('<meta name="description" content="PDF翻訳Webアプリのライセンス、使用しているOSS、AGPL-3.0コンポーネント、第三者ライセンス情報を掲載しています。" />');
-    expect(licensesContent).toContain('<link rel="canonical" href="https://pdftr.pages.dev/licenses" />');
+    expect(licensesContent).toContain('<meta name="description" content="PDF翻訳Webアプリのライセンス、使用しているOSS、AGPL-3.0コンポーネント、第三者ライセンス情報を掲載しています。">');
+    expect(licensesContent).toContain('<link rel="canonical" href="https://pdftr.pages.dev/licenses">');
 
     // sitemap checks
     const sitemapContent = fs.readFileSync(sitemapPath, 'utf8');
@@ -45,7 +41,7 @@ test.describe('SSG and SEO requirements', () => {
   });
 
   test('SPA routing to /about and /licenses still works', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/app');
     
     // Go to about
     await page.goto('/about');
@@ -58,7 +54,7 @@ test.describe('SSG and SEO requirements', () => {
 
   test('SPA fallback works for /settings', async ({ page }) => {
     // Navigate directly to a dynamic route, should use SPA fallback and load the app
-    await page.goto('/settings');
+    await page.goto('/app/settings');
     
     // Wait for the settings page to render its main heading
     await expect(page.locator('h1', { hasText: '設定' })).toBeVisible();
