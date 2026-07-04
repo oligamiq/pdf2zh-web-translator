@@ -57,7 +57,7 @@ jobs:
       - name: Verify production bundle
         run: |
           npm run build
-          npm --workspace frontend run check:prod-bundle
+          npm run check:prod-bundle
 
       - name: Upload Playwright report
         if: always()
