@@ -17,3 +17,13 @@ outputs/
 
 *.log
 .turbo/
+
+# build outputs
+frontend/dist/
+frontend/dist-e2e/
+frontend/.output/
+frontend/.vinxi/
+frontend/.nitro/
+frontend/.wrangler/
+
+!frontend/.env.example

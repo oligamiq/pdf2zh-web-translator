@@ -1,1 +1,0 @@
-import{createComponent as o}from"solid-js/web";import{T as t,a as e}from"./assets/index-BSDoL9aR.js";import{c as n}from"./assets/clientOnly-zGwykQvR.js";import"solid-js";const r=n(()=>import("./assets/Dashboard-BRfvzQ_2.js"),{lazy:!0});function p(){return[o(t,{children:"PDF翻訳アプリ"}),o(e,{name:"robots",content:"noindex,nofollow"}),o(r,{})]}export{p as default};

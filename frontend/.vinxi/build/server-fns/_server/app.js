@@ -1,1 +1,0 @@
-import{onMount as n}from"solid-js";import{s as u,a}from"./assets/authState-BZctefYf.js";function i(t){return n(()=>{import("./assets/firebase-D_DCxAHy.js").then(({auth:r})=>{import("firebase/auth").then(({onAuthStateChanged:e})=>{e(r,o=>{u(o),a(!0)})})})}),t.children}export{i as default};
