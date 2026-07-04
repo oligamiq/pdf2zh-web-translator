@@ -54,6 +54,11 @@ jobs:
       - name: Run frontend E2E directly
         run: npm --workspace frontend run test:e2e -- --reporter=list
 
+      - name: Verify production bundle
+        run: |
+          npm run build
+          npm --workspace frontend run check:prod-bundle
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,15 +1,13 @@
 import { A } from "@solidjs/router";
-import { Title, Meta, Link } from "@solidjs/meta";
-
 export default function Index() {
   return (
     <main class="container">
-      <Title>PDF翻訳 - 翻訳済みPDFと対訳PDFを作成</Title>
-      <Meta
+      <title>PDF翻訳 - 翻訳済みPDFと対訳PDFを作成</title>
+      <meta
         name="description"
         content="PDFをアップロードして、翻訳済みPDFと対訳PDFを作成できるWebアプリです。ゲスト利用にも対応しています。"
       />
-      <Link rel="canonical" href="https://pdftr.pages.dev/" />
+      <link rel="canonical" href="https://pdftr.pages.dev/" />
       <div style="padding: 40px; text-align: center;">
         <h1>PDF翻訳</h1>
         <p>PDFをアップロードして翻訳済みPDFと対訳PDFを作成できます。</p>

@@ -1,7 +1,5 @@
 import { createSignal, onMount, For, Show } from 'solid-js';
 import { A } from '@solidjs/router';
-import { Title, Meta } from '@solidjs/meta';
-
 interface LicenseItem {
   name: string;
   version: string;
@@ -29,8 +27,8 @@ export default function Licenses() {
 
   return (
     <div style="padding: 32px; max-width: 800px; margin: 0 auto;">
-      <Title>ライセンス - PDF翻訳</Title>
-      <Meta name="description" content="PDF翻訳Webアプリのライセンス、使用しているOSS、AGPL-3.0コンポーネント、第三者ライセンス情報を掲載しています。" />
+      <title>ライセンス - PDF翻訳</title>
+      <meta name="description" content="PDF翻訳Webアプリのライセンス、使用しているOSS、AGPL-3.0コンポーネント、第三者ライセンス情報を掲載しています。" />
       <link rel="canonical" href="https://pdftr.pages.dev/licenses" />
 
       <h1 style="color: var(--accent); margin-bottom: 24px;">ライセンス情報</h1>

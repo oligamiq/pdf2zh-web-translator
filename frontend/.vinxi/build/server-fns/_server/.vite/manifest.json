@@ -1,23 +1,36 @@
 {
-  "_components-Bpi7F98j.js": {
-    "file": "assets/components-Bpi7F98j.js",
-    "name": "components",
-    "imports": [
-      "_routing-Bi5-inpe.js"
-    ]
+  "_authState-BZctefYf.js": {
+    "file": "assets/authState-BZctefYf.js",
+    "name": "authState"
   },
-  "_routing-Bi5-inpe.js": {
-    "file": "assets/routing-Bi5-inpe.js",
-    "name": "routing"
+  "_clientOnly-zGwykQvR.js": {
+    "file": "assets/clientOnly-zGwykQvR.js",
+    "name": "clientOnly"
   },
-  "_server-fns-BxQkARz8.js": {
-    "file": "assets/server-fns-BxQkARz8.js",
+  "_components-CRSEIZ-T.js": {
+    "file": "assets/components-CRSEIZ-T.js",
+    "name": "components"
+  },
+  "_index-BgYMpQL1.js": {
+    "file": "assets/index-BgYMpQL1.js",
+    "name": "index"
+  },
+  "_server-fns-kzhC1chi.js": {
+    "file": "assets/server-fns-kzhC1chi.js",
     "name": "server-fns",
     "dynamicImports": [
       "src/routes/[...404].tsx?pick=default&pick=$css",
       "src/routes/[...404].tsx?pick=default&pick=$css",
       "src/routes/about.tsx?pick=default&pick=$css",
       "src/routes/about.tsx?pick=default&pick=$css",
+      "src/routes/app/index.tsx?pick=default&pick=$css",
+      "src/routes/app/index.tsx?pick=default&pick=$css",
+      "src/routes/app/jobs/[id].tsx?pick=default&pick=$css",
+      "src/routes/app/jobs/[id].tsx?pick=default&pick=$css",
+      "src/routes/app/settings/advanced.tsx?pick=default&pick=$css",
+      "src/routes/app/settings/advanced.tsx?pick=default&pick=$css",
+      "src/routes/app/settings/index.tsx?pick=default&pick=$css",
+      "src/routes/app/settings/index.tsx?pick=default&pick=$css",
       "src/routes/app.tsx?pick=default&pick=$css",
       "src/routes/app.tsx?pick=default&pick=$css",
       "src/routes/index.tsx?pick=default&pick=$css",
@@ -27,17 +40,90 @@
       "src/app.tsx"
     ]
   },
+  "src/api.ts": {
+    "file": "assets/api-BVYrDQoa.js",
+    "name": "api",
+    "src": "src/api.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/firebase.ts",
+      "_authState-BZctefYf.js"
+    ]
+  },
   "src/app.tsx": {
-    "file": "assets/app-BKliNqmb.js",
+    "file": "assets/app-pXVKcHzu.js",
     "name": "app",
     "src": "src/app.tsx",
     "isDynamicEntry": true,
     "imports": [
-      "_server-fns-BxQkARz8.js",
-      "_routing-Bi5-inpe.js"
+      "_index-BgYMpQL1.js",
+      "_server-fns-kzhC1chi.js",
+      "src/firebase.ts",
+      "_authState-BZctefYf.js",
+      "_components-CRSEIZ-T.js"
     ],
     "css": [
-      "assets/app-DYKmZOZr.css"
+      "assets/app-CRg8N-3Q.css"
+    ]
+  },
+  "src/firebase.ts": {
+    "file": "assets/firebase-D_DCxAHy.js",
+    "name": "firebase",
+    "src": "src/firebase.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "_authState-BZctefYf.js"
+    ]
+  },
+  "src/pages/AdvancedSettings.tsx": {
+    "file": "assets/AdvancedSettings-KvVP6GjM.js",
+    "name": "AdvancedSettings",
+    "src": "src/pages/AdvancedSettings.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/api.ts",
+      "_authState-BZctefYf.js",
+      "_components-CRSEIZ-T.js",
+      "src/firebase.ts"
+    ]
+  },
+  "src/pages/Dashboard.tsx": {
+    "file": "assets/Dashboard-BRfvzQ_2.js",
+    "name": "Dashboard",
+    "src": "src/pages/Dashboard.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/api.ts",
+      "_components-CRSEIZ-T.js",
+      "_authState-BZctefYf.js",
+      "src/firebase.ts"
+    ],
+    "dynamicImports": [
+      "src/api.ts"
+    ]
+  },
+  "src/pages/JobDetail.tsx": {
+    "file": "assets/JobDetail-D-9qnIq9.js",
+    "name": "JobDetail",
+    "src": "src/pages/JobDetail.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/api.ts",
+      "_authState-BZctefYf.js",
+      "_components-CRSEIZ-T.js",
+      "src/firebase.ts"
+    ]
+  },
+  "src/pages/Settings.tsx": {
+    "file": "assets/Settings-3Vgv_c5d.js",
+    "name": "Settings",
+    "src": "src/pages/Settings.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/api.ts",
+      "_authState-BZctefYf.js",
+      "_components-CRSEIZ-T.js",
+      "src/firebase.ts"
     ]
   },
   "src/routes/[...404].tsx?pick=default&pick=$css": {
@@ -47,8 +133,7 @@
     "isEntry": true,
     "isDynamicEntry": true,
     "imports": [
-      "_components-Bpi7F98j.js",
-      "_routing-Bi5-inpe.js"
+      "_components-CRSEIZ-T.js"
     ]
   },
   "src/routes/about.tsx?pick=default&pick=$css": {
@@ -58,8 +143,7 @@
     "isEntry": true,
     "isDynamicEntry": true,
     "imports": [
-      "_components-Bpi7F98j.js",
-      "_routing-Bi5-inpe.js"
+      "_components-CRSEIZ-T.js"
     ]
   },
   "src/routes/app.tsx?pick=default&pick=$css": {
@@ -67,17 +151,78 @@
     "name": "app",
     "src": "src/routes/app.tsx?pick=default&pick=$css",
     "isEntry": true,
-    "isDynamicEntry": true
+    "isDynamicEntry": true,
+    "imports": [
+      "_authState-BZctefYf.js"
+    ],
+    "dynamicImports": [
+      "src/firebase.ts"
+    ]
+  },
+  "src/routes/app/index.tsx?pick=default&pick=$css": {
+    "file": "index.js",
+    "name": "index",
+    "src": "src/routes/app/index.tsx?pick=default&pick=$css",
+    "isEntry": true,
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-BgYMpQL1.js",
+      "_clientOnly-zGwykQvR.js"
+    ],
+    "dynamicImports": [
+      "src/pages/Dashboard.tsx"
+    ]
+  },
+  "src/routes/app/jobs/[id].tsx?pick=default&pick=$css": {
+    "file": "_id_.js",
+    "name": "_id_",
+    "src": "src/routes/app/jobs/[id].tsx?pick=default&pick=$css",
+    "isEntry": true,
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-BgYMpQL1.js",
+      "_clientOnly-zGwykQvR.js"
+    ],
+    "dynamicImports": [
+      "src/pages/JobDetail.tsx"
+    ]
+  },
+  "src/routes/app/settings/advanced.tsx?pick=default&pick=$css": {
+    "file": "advanced.js",
+    "name": "advanced",
+    "src": "src/routes/app/settings/advanced.tsx?pick=default&pick=$css",
+    "isEntry": true,
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-BgYMpQL1.js",
+      "_clientOnly-zGwykQvR.js"
+    ],
+    "dynamicImports": [
+      "src/pages/AdvancedSettings.tsx"
+    ]
+  },
+  "src/routes/app/settings/index.tsx?pick=default&pick=$css": {
+    "file": "index2.js",
+    "name": "index",
+    "src": "src/routes/app/settings/index.tsx?pick=default&pick=$css",
+    "isEntry": true,
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-BgYMpQL1.js",
+      "_clientOnly-zGwykQvR.js"
+    ],
+    "dynamicImports": [
+      "src/pages/Settings.tsx"
+    ]
   },
   "src/routes/index.tsx?pick=default&pick=$css": {
-    "file": "index.js",
+    "file": "index3.js",
     "name": "index",
     "src": "src/routes/index.tsx?pick=default&pick=$css",
     "isEntry": true,
     "isDynamicEntry": true,
     "imports": [
-      "_components-Bpi7F98j.js",
-      "_routing-Bi5-inpe.js"
+      "_components-CRSEIZ-T.js"
     ]
   },
   "src/routes/licenses.tsx?pick=default&pick=$css": {
@@ -87,8 +232,7 @@
     "isEntry": true,
     "isDynamicEntry": true,
     "imports": [
-      "_components-Bpi7F98j.js",
-      "_routing-Bi5-inpe.js"
+      "_components-CRSEIZ-T.js"
     ]
   },
   "virtual:$vinxi/handler/server-fns": {
@@ -97,7 +241,7 @@
     "src": "virtual:$vinxi/handler/server-fns",
     "isEntry": true,
     "imports": [
-      "_server-fns-BxQkARz8.js"
+      "_server-fns-kzhC1chi.js"
     ]
   }
 }
