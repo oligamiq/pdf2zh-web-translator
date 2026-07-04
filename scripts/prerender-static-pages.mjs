@@ -63,6 +63,22 @@ Sitemap: ${SITE_URL}/sitemap.xml`;
       console.log('Removed invalid 404 fallback from _redirects');
     }
   }
+
+  // Ensure about.html and licenses.html exist and create folder structure
+  const pagesToCopy = ['about', 'licenses'];
+  for (const page of pagesToCopy) {
+    const sourceHtml = path.join(distDir, `${page}.html`);
+    if (!fs.existsSync(sourceHtml)) {
+      throw new Error(`Missing expected static page: ${page}.html`);
+    }
+    const pageDir = path.join(distDir, page);
+    if (!fs.existsSync(pageDir)) {
+      fs.mkdirSync(pageDir, { recursive: true });
+    }
+    fs.copyFileSync(sourceHtml, path.join(pageDir, 'index.html'));
+    console.log(`Copied ${page}.html to ${page}/index.html`);
+  }
+
   // Fix _routes.json to exclude dynamically generated static files
   const routesPath = path.join(distDir, '_routes.json');
   if (fs.existsSync(routesPath)) {
@@ -75,8 +91,12 @@ Sitemap: ${SITE_URL}/sitemap.xml`;
         if (!routes.exclude.includes('/sitemap.xml')) {
           routes.exclude.push('/sitemap.xml');
         }
+        for (const page of ['about', 'licenses']) {
+          if (!routes.exclude.includes(`/${page}.html`)) routes.exclude.push(`/${page}.html`);
+          if (!routes.exclude.includes(`/${page}/index.html`)) routes.exclude.push(`/${page}/index.html`);
+        }
         fs.writeFileSync(routesPath, JSON.stringify(routes, null, 2));
-        console.log('Added robots.txt and sitemap.xml to _routes.json exclude list');
+        console.log('Added robots.txt, sitemap.xml, and static HTML pages to _routes.json exclude list');
       }
     } catch (err) {
       console.error('Failed to parse or update _routes.json:', err);
