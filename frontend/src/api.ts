@@ -1,5 +1,4 @@
-import { auth } from './firebase';
-import { setCurrentUser } from './authState';
+import { currentUser, setCurrentUser } from './authState';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -10,7 +9,8 @@ async function getToken(forceRefresh: boolean = false) {
 
   const e2eToken = isE2EAuthBypassEnabled ? sessionStorage.getItem('e2e_token') : null;
   if (e2eToken) return e2eToken;
-  return auth.currentUser ? await auth.currentUser.getIdToken(forceRefresh) : null;
+  const user = currentUser();
+  return user ? await user.getIdToken(forceRefresh) : null;
 }
 
 export function isAuthenticated(): boolean {
@@ -21,7 +21,7 @@ export function isAuthenticated(): boolean {
   if (isE2EAuthBypassEnabled && sessionStorage.getItem('e2e_token')) {
     return true;
   }
-  return !!auth.currentUser;
+  return !!currentUser();
 }
 
 export async function logout() {
@@ -36,6 +36,7 @@ export async function logout() {
     return;
   }
 
+  const { auth } = await import('./firebase');
   await auth.signOut();
   setCurrentUser(null);
 }

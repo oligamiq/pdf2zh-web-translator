@@ -3,7 +3,6 @@ import { checkHealth, checkPcHealth, logout } from '../api';
 import { A } from '@solidjs/router';
 import JobList from '../components/JobList';
 import UploadForm from '../components/UploadForm';
-import { loginWithGoogle } from '../firebase';
 import { currentUser, authReady } from '../authState';
 
 export default function Dashboard() {
@@ -102,6 +101,7 @@ export default function Dashboard() {
     }, LOGIN_TIMEOUT_MS);
 
     try {
+      const { loginWithGoogle } = await import('../firebase');
       await loginWithGoogle();
       settled = true;
     } catch (e: any) {

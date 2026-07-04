@@ -1,4 +1,4 @@
-import { MetaProvider } from "@solidjs/meta";
+import { MetaProvider, Link } from "@solidjs/meta";
 import { Router, Route, Navigate } from "@solidjs/router";
 import { FileRoutes } from "@solidjs/start/router";
 import { Suspense } from "solid-js";
