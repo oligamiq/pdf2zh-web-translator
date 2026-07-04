@@ -41,15 +41,29 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID }}
         
+      - name: Debug dist output
+        run: |
+          find frontend/dist -maxdepth 4 -type f | sort | sed -n '1,220p' || true
+          ls -la frontend/dist || true
+          ls -la frontend/dist/about 2>/dev/null || true
+          ls -la frontend/dist/licenses 2>/dev/null || true
+
       - name: Check SSG generated files
         run: |
-          test -f frontend/dist/about/index.html
-          test -f frontend/dist/about.html
-          test -f frontend/dist/licenses/index.html
-          test -f frontend/dist/licenses.html
-          test -f frontend/dist/sitemap.xml
-          test -f frontend/dist/robots.txt
-          
+          for file in \
+            frontend/dist/about/index.html \
+            frontend/dist/about.html \
+            frontend/dist/licenses/index.html \
+            frontend/dist/licenses.html \
+            frontend/dist/sitemap.xml \
+            frontend/dist/robots.txt
+          do
+            if [ ! -f "$file" ]; then
+              echo "::error::Missing expected build output: $file"
+              find frontend/dist -maxdepth 4 -type f | sort
+              exit 1
+            fi
+          done
       - name: Check AGPL and GitHub references in licenses
         run: |
           grep -F "AGPL-3.0" frontend/dist/licenses/index.html
