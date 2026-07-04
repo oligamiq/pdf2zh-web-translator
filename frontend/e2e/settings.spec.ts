@@ -111,7 +111,7 @@ test.describe('Settings UI', () => {
       await dialog.accept();
     });
 
-    await page.goto('/app/settings/advanced');
+    await page.goto('/settings/advanced');
     
     await page.getByTestId('add-provider-button').click();
     await expect(page.locator('text=Providerを追加').first()).toBeVisible();

@@ -137,7 +137,7 @@ test.describe('Layout & Long Text Resistance', () => {
 
     for (const vp of viewports) {
       await page.setViewportSize(vp);
-      await page.goto('/app/jobs/job-1');
+      await page.goto('/jobs/job-1');
 
       const summary = page.getByTestId('job-summary');
       const filenameLocator = summary.getByTestId('job-summary-filename');
@@ -336,7 +336,7 @@ test.describe('Layout & Long Text Resistance', () => {
 
   test("account menu hover highlight stays inside menu bounds", async ({ page }) => {
     await setupAuthenticatedUser(page);
-    await page.goto("/app");
+    await page.goto("/");
 
     await page.getByTestId("account-menu-button").click();
 
@@ -381,7 +381,7 @@ test.describe('Layout & Long Text Resistance', () => {
       });
     });
 
-    await page.goto("/app");
+    await page.goto("/");
 
     const statuses = page.getByTestId("job-status");
     await expect(statuses).toHaveCount(2);
@@ -398,7 +398,7 @@ test.describe('Layout & Long Text Resistance', () => {
 
   test("dragging account menu text does not show upload drop overlay", async ({ page }) => {
     await setupAuthenticatedUser(page);
-    await page.goto("/app");
+    await page.goto("/");
 
     await page.getByTestId("account-menu-button").click();
 
@@ -421,7 +421,7 @@ test.describe('Layout & Long Text Resistance', () => {
   });
 
   test("file drag still shows upload drop overlay", async ({ page }) => {
-    await page.goto("/app");
+    await page.goto("/");
     await expect(page.getByTestId("pdf-file-input")).toBeEnabled();
 
     await page.evaluate(() => {

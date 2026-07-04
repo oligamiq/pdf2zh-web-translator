@@ -27,3 +27,11 @@ frontend/.nitro/
 frontend/.wrangler/
 
 !frontend/.env.example
+
+# Lighthouse / audit reports
+frontend/lh-*.json
+frontend/lighthouse-*.json
+frontend/.lighthouse/
+lh-*.json
+lighthouse-*.json
+
