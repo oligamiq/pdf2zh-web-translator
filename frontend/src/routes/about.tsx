@@ -1,11 +1,12 @@
 import { A } from '@solidjs/router';
+import { Title, Meta, Link } from "@solidjs/meta";
 
 export default function About() {
   return (
     <div style="padding: 32px; max-width: 800px; margin: 0 auto;">
-      <title>利用制限と注意事項 - PDF翻訳</title>
-      <meta name="description" content="PDF翻訳Webアプリの利用制限、保存期間、APIキー、外部サービス利用時の注意事項を説明します。" />
-      <link rel="canonical" href="https://pdftr.pages.dev/about" />
+      <Title>利用制限と注意事項 - PDF翻訳</Title>
+      <Meta name="description" content="PDF翻訳Webアプリの利用制限、保存期間、APIキー、外部サービス利用時の注意事項を説明します。" />
+      <Link rel="canonical" href="https://pdftr.pages.dev/about" />
 
       <h1 style="color: var(--accent); margin-bottom: 24px;">利用制限と注意事項</h1>
       <A href="/" style="display: inline-block; margin-bottom: 24px; color: var(--accent); text-decoration: none;">&larr; アップロード画面へ戻る</A>

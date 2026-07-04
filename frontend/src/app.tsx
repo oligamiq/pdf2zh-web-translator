@@ -4,17 +4,14 @@ import { FileRoutes } from "@solidjs/start/router";
 import { Suspense } from "solid-js";
 import "./index.css";
 
-import GlobalApp from "./App";
-
 export default function App() {
   return (
     <Router
       root={(props) => (
         <MetaProvider>
-          <title>PDF翻訳</title>
-          <GlobalApp>
+          <div class="min-h-screen bg-gray-900 text-gray-100 font-sans">
             <Suspense>{props.children}</Suspense>
-          </GlobalApp>
+          </div>
         </MetaProvider>
       )}
     >
