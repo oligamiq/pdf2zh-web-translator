@@ -79,29 +79,7 @@ Sitemap: ${SITE_URL}/sitemap.xml`;
     console.log(`Copied ${page}.html to ${page}/index.html`);
   }
 
-  // Fix _routes.json to exclude dynamically generated static files
-  const routesPath = path.join(distDir, '_routes.json');
-  if (fs.existsSync(routesPath)) {
-    try {
-      const routes = JSON.parse(fs.readFileSync(routesPath, 'utf-8'));
-      if (routes.exclude && Array.isArray(routes.exclude)) {
-        if (!routes.exclude.includes('/robots.txt')) {
-          routes.exclude.push('/robots.txt');
-        }
-        if (!routes.exclude.includes('/sitemap.xml')) {
-          routes.exclude.push('/sitemap.xml');
-        }
-        for (const page of ['about', 'licenses']) {
-          if (!routes.exclude.includes(`/${page}.html`)) routes.exclude.push(`/${page}.html`);
-          if (!routes.exclude.includes(`/${page}/index.html`)) routes.exclude.push(`/${page}/index.html`);
-        }
-        fs.writeFileSync(routesPath, JSON.stringify(routes, null, 2));
-        console.log('Added robots.txt, sitemap.xml, and static HTML pages to _routes.json exclude list');
-      }
-    } catch (err) {
-      console.error('Failed to parse or update _routes.json:', err);
-    }
-  }
+  // Handled natively by Vinxi / Nitro (cloudflare-pages preset) in app.config.ts
 }
 
 prerender();

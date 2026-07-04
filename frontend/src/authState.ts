@@ -3,3 +3,4 @@ import type { User } from 'firebase/auth';
 
 export const [currentUser, setCurrentUser] = createSignal<User | null>(null);
 export const [authReady, setAuthReady] = createSignal(false);
+export const [autoLoginTriggered, setAutoLoginTriggered] = createSignal(false);

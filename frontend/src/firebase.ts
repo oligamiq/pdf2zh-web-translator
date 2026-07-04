@@ -54,6 +54,12 @@ export const loginWithGoogle = async () => {
   return result;
 };
 
-export const logout = () => {
+export const logout = async () => {
+  if (import.meta.env.MODE === 'e2e' && import.meta.env.VITE_E2E_AUTH_BYPASS === 'true') {
+    sessionStorage.removeItem('e2e_token');
+    sessionStorage.removeItem('e2e_user_email');
+    setCurrentUser(null);
+    return;
+  }
   return signOut(auth);
 };

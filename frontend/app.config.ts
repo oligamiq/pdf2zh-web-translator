@@ -9,6 +9,23 @@ export default defineConfig({
       crawlLinks: false,
       autoSubfolderIndex: false,
     },
+    cloudflare: {
+      pages: {
+        routes: {
+          exclude: [
+            "/",
+            "/about",
+            "/licenses",
+            "/robots.txt",
+            "/sitemap.xml",
+            "/favicon.svg",
+            "/favicon.ico",
+            "/og-image.png",
+            "/og-image.svg"
+          ]
+        }
+      }
+    }
   },
   vite: {
     plugins: [visualizer({ filename: "dist/stats.html" })]
