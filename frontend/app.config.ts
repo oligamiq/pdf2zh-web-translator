@@ -16,6 +16,7 @@ export default defineConfig({
             "/",
             "/about",
             "/licenses",
+            "/llms.txt",
             "/robots.txt",
             "/sitemap.xml",
             "/favicon.svg",

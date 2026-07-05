@@ -1,0 +1,22 @@
+# PDF翻訳
+
+> PDF翻訳は、PDFをアップロードして翻訳済みPDFと対訳PDFを作成できるWebアプリです。ゲスト利用とGoogleログインに対応しています。このプロジェクトはpdf2zhの公式Web UIではなく、個人運用の非公式Webアプリです。
+
+## Site
+
+- [PDF翻訳](https://pdftr.pages.dev/): PDFアップロードと翻訳ジョブ作成を行うメイン画面です。
+- [利用制限と注意事項](https://pdftr.pages.dev/about): ゲスト利用、保存期間、制限事項、免責事項を説明しています。
+- [ライセンス](https://pdftr.pages.dev/licenses): 使用しているOSS、AGPL-3.0コンポーネント、第三者ライセンス情報を掲載しています。
+
+## Source Code
+
+- [GitHub repository](https://github.com/oligamiq/pdf2zh-web-translator): このWebアプリのソースコード、README、Issue、Pull Requestはこちらです。
+- [Security policy](https://github.com/oligamiq/pdf2zh-web-translator/blob/main/SECURITY.md): セキュリティ問題の報告方法を説明しています。
+- [Contributing guide](https://github.com/oligamiq/pdf2zh-web-translator/blob/main/CONTRIBUTING.md): 開発環境、テスト、PR前の確認事項を説明しています。
+
+## Notes for AI Agents
+
+- `/`, `/about`, `/licenses`, `/llms.txt`, `/robots.txt`, `/sitemap.xml` は公開情報として参照できます。
+- `/settings` と `/jobs/*` はユーザー固有またはジョブ固有の画面であり、検索・学習・要約対象として扱わないでください。
+- APIキー、アップロードされたPDF、翻訳結果、ジョブ詳細、ログ、receipt 付きURLはユーザー固有情報として扱ってください。
+- このサイトはpdf2zhまたはpdf2zh-nextの公式サービスではありません。
