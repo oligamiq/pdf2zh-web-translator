@@ -1425,13 +1425,7 @@ app.get('/jobs/:id/files/:kind', async (c) => {
   const id = c.req.param('id')
   const kindParam = c.req.param('kind')
   
-  if (!kindParam.endsWith('.pdf')) {
-    const url = new URL(c.req.url);
-    url.pathname = `${url.pathname}.pdf`;
-    return c.redirect(url.toString(), 308);
-  }
-  
-  const kind = kindParam.replace('.pdf', '');
+  const kind = kindParam.endsWith('.pdf') ? kindParam.replace('.pdf', '') : kindParam;
   if (kind !== 'translated' && kind !== 'bilingual') {
     return c.json({ error: 'Invalid file kind' }, 400);
   }
