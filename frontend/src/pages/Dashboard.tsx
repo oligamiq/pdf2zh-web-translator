@@ -12,6 +12,7 @@ export default function Dashboard() {
   const [health, setHealth] = createSignal<string>('確認中...');
   const [pcHealth, setPcHealth] = createSignal<{ok: boolean, status: string, message?: string} | null>(null);
   const [refreshFlag, setRefreshFlag] = createSignal(0);
+  const [showJobList, setShowJobList] = createSignal(false);
 
   const fetchHealth = async () => {
     try {
@@ -32,9 +33,21 @@ export default function Dashboard() {
   };
 
   onMount(() => {
-    fetchHealth();
-    fetchPcHealth();
-    const interval = setInterval(fetchPcHealth, 30000);
+    const initTask = () => {
+      fetchHealth();
+      fetchPcHealth();
+      setShowJobList(true);
+    };
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      window.requestIdleCallback(initTask, { timeout: 1500 });
+    } else {
+      setTimeout(initTask, 500);
+    }
+
+    const interval = setInterval(() => {
+      if (showJobList()) fetchPcHealth();
+    }, 30000);
 
     onCleanup(() => {
       clearInterval(interval);
@@ -87,7 +100,9 @@ export default function Dashboard() {
       </div>
 
       <UploadForm onUploadSuccess={() => setRefreshFlag(f => f + 1)} />
-      <JobList authReady={authReady()} user={currentUser()} refreshFlag={refreshFlag()} />
+      <Show when={showJobList()}>
+        <JobList authReady={authReady()} user={currentUser()} refreshFlag={refreshFlag()} />
+      </Show>
     </div>
   );
 }

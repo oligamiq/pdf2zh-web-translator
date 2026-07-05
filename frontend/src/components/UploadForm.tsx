@@ -151,18 +151,38 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
   });
 
   createEffect(() => {
-    if (authReady()) {
-      import('../api').then(({ getLimits }) => {
-        getLimits().then(setLimits).catch(console.error);
-      });
+    let idleId: number | null = null;
+    let timeoutId: any = null;
+
+    const fetchSettings = () => {
+      if (authReady()) {
+        import('../api').then(({ getLimits }) => {
+          getLimits().then(setLimits).catch(console.error);
+        });
+      }
+      if (currentUser()) {
+        getApiBasicSettings().then(data => {
+          if (data.target_language) {
+            setTargetLanguage(data.target_language);
+          }
+        }).catch(console.error);
+      }
+    };
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = window.requestIdleCallback(fetchSettings, { timeout: 2000 });
+    } else {
+      timeoutId = setTimeout(fetchSettings, 500);
     }
-    if (currentUser()) {
-      getApiBasicSettings().then(data => {
-        if (data.target_language) {
-          setTargetLanguage(data.target_language);
-        }
-      }).catch(console.error);
-    }
+
+    onCleanup(() => {
+      if (idleId !== null && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+    });
   });
 
   const processFiles = async (files: FileList) => {
