@@ -1,5 +1,5 @@
 import { createSignal, onMount, onCleanup, For, Show, createEffect } from 'solid-js';
-import { getJobs, deleteJob, viewPdf } from '../api';
+import { getJobs, deleteJob, getPdfUrl } from '../api';
 import { A } from '@solidjs/router';
 
 export default function JobList(props: { authReady?: boolean, user?: any, refreshFlag?: number }) {
@@ -18,13 +18,7 @@ export default function JobList(props: { authReady?: boolean, user?: any, refres
     }
   };
 
-  const handleOpenPdf = async (id: string) => {
-    try {
-      await viewPdf(id, 'dual');
-    } catch (e: any) {
-      alert("Failed to get download URL: " + e.message);
-    }
-  };
+
 
   const handleDelete = async (id: string) => {
     if (window.confirm("Remove this job from history? The translated files may no longer be easy to access from this browser.")) {
@@ -105,7 +99,7 @@ export default function JobList(props: { authReady?: boolean, user?: any, refres
 
               <div class="job-actions" data-testid="job-actions">
                 <Show when={job.status === 'completed' || job.status === 'succeeded'}>
-                  <button class="btn" style="background: transparent; border: 1px solid var(--border); color: var(--text);" onClick={() => handleOpenPdf(job.id)}>PDFを表示</button>
+                  <a class="btn" style="background: transparent; border: 1px solid var(--border); color: var(--text);" href={getPdfUrl(job, 'bilingual')} target="_blank">PDFを表示</a>
                 </Show>
                 <A href={`/jobs/${job.id}`} class="btn">詳細</A>
                 <button class="btn btn-danger" onClick={() => handleDelete(job.id)}>削除</button>

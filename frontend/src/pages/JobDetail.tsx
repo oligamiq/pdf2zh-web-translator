@@ -1,6 +1,6 @@
 import { createSignal, onMount, Show, onCleanup, createEffect } from 'solid-js';
 import { useParams, A } from '@solidjs/router';
-import { getJob, downloadJob, getJobAttempts } from '../api';
+import { getJob, downloadJob, getJobAttempts, getPdfUrl } from '../api';
 import LogViewer from '../components/LogViewer';
 import { authReady, currentUser } from '../authState';
 import './JobDetail.css';
@@ -99,9 +99,15 @@ export default function JobDetail() {
             
             <div class="job-summary-status">
               <Show when={job().status === 'completed' || job().status === 'succeeded'}>
-                <button class="btn" onClick={handleDownload} disabled={downloading()} style="margin-top: 18px;">
-                  {downloading() ? 'ダウンロード中...' : 'ZIPをダウンロード'}
-                </button>
+                <div style="display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap;">
+                  <a class="btn" href={getPdfUrl(job(), 'translated')} target="_blank">翻訳PDF 表示</a>
+                  <a class="btn" href={getPdfUrl(job(), 'bilingual')} target="_blank">対訳PDF 表示</a>
+                  <a class="btn" style="background: transparent; border: 1px solid var(--border); color: var(--text);" href={getPdfUrl(job(), 'translated', true)} rel="external">翻訳PDF 保存</a>
+                  <a class="btn" style="background: transparent; border: 1px solid var(--border); color: var(--text);" href={getPdfUrl(job(), 'bilingual', true)} rel="external">対訳PDF 保存</a>
+                  <button class="btn" onClick={handleDownload} disabled={downloading()} style="background: transparent; border: 1px solid var(--border); color: var(--text);">
+                    {downloading() ? '処理中...' : 'ZIPで一括保存'}
+                  </button>
+                </div>
               </Show>
             </div>
           </div>

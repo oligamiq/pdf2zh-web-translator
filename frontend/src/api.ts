@@ -186,53 +186,18 @@ export async function downloadJob(id: string) {
   return apiFetch(`/jobs/${id}/download`);
 }
 
-export async function viewPdf(jobId: string, type: "dual" | "mono" = "dual") {
-  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
-  const publicJobs = JSON.parse(publicJobsStr);
-  const receipt = publicJobs[jobId];
-
-  // We should fetch even for public jobs to validate the PDF contents
-  // The user requirement says: "public/private両方確認", and "Blob URLを開く前に %PDF- を確認"
-  const urlPath = receipt 
-    ? `/public/jobs/${jobId}/download?type=${type}&receipt=${receipt}`
-    : `/jobs/${jobId}/download?type=${type}`;
-
-  const popup = window.open("about:blank", "_blank");
-  try {
-    const res = await apiFetch(urlPath);
-    
-    const contentType = res.headers.get("content-type") ?? "";
-    const blob = await res.blob();
-
-    if (!res.ok) {
-      const text = await blob.text().catch(() => "");
-      throw new Error(text || `Failed to load PDF: ${res.status}`);
-    }
-
-    const headBytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
-    const headText = new TextDecoder().decode(headBytes);
-
-    if (!headText.startsWith("%PDF-")) {
-      const text = await blob.text().catch(() => "");
-      throw new Error(
-        `Downloaded file is not a PDF. status=${res.status}, content-type=${contentType}, size=${blob.size}, head=${JSON.stringify(headText)}, body=${text.slice(0, 500)}`
-      );
-    }
-
-    const pdfBlob = new Blob([blob], { type: "application/pdf" });
-    const url = URL.createObjectURL(pdfBlob);
-
-    if (popup) {
-      popup.location.href = url;
-    } else {
-      window.open(url, "_blank");
-    }
-
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  } catch (err) {
-    if (popup) popup.close();
-    throw err;
+export function getPdfUrl(job: any, kind: "translated" | "bilingual", download: boolean = false): string {
+  let receipt = job.view_token;
+  if (!receipt && job.owner_type === 'public') {
+    const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
+    const publicJobs = JSON.parse(publicJobsStr);
+    receipt = publicJobs[job.id];
   }
+  let url = `${BASE_URL}/jobs/${job.id}/files/${kind}.pdf?receipt=${receipt || ''}`;
+  if (download) {
+    url += '&download=1';
+  }
+  return url;
 }
 
 export async function deleteJob(id: string) {

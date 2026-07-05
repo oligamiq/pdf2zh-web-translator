@@ -69,7 +69,7 @@ test.describe('UX Improvements', () => {
 
     // Check completed job actions
     const job1Row = page.getByTestId('job-row').filter({ hasText: 'very_long_filename_that_should_be_truncated.pdf' });
-    await expect(job1Row.getByRole('button', { name: 'PDFを表示' })).toBeVisible();
+    await expect(job1Row.getByRole('link', { name: 'PDFを表示' })).toBeVisible();
     await expect(job1Row.getByRole('link', { name: '詳細' })).toBeVisible();
     await expect(job1Row.getByRole('button', { name: '削除' })).toBeVisible();
 

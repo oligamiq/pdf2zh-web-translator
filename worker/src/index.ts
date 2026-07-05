@@ -1193,7 +1193,13 @@ app.get('/jobs', authMiddleware, async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name FROM jobs WHERE user_id = ? AND deleted_at IS NULL AND created_at >= datetime('now', '-7 days') ORDER BY created_at DESC`
   ).bind(uid).all()
-  return c.json(results)
+  
+  const salt = c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'
+  const resultsWithTokens = await Promise.all(results.map(async (job: any) => ({
+    ...job,
+    view_token: await sha256Hex(job.id + salt)
+  })))
+  return c.json(resultsWithTokens)
 })
 
 app.get('/jobs/:id', authMiddleware, async (c) => {
@@ -1201,7 +1207,9 @@ app.get('/jobs/:id', authMiddleware, async (c) => {
   const id = c.req.param('id')
   const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name FROM jobs WHERE id = ? AND user_id = ? AND deleted_at IS NULL`).bind(id, uid).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
-  return c.json(job)
+  
+  const view_token = await sha256Hex(job.id + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
+  return c.json({ ...job, view_token })
 })
 
 app.get('/jobs/:id/attempts', authMiddleware, async (c) => {
@@ -1328,6 +1336,98 @@ app.get('/public/jobs/:id/download', async (c) => {
   return new Response(resp.body, {
     status: resp.status,
     headers: resp.headers
+  })
+})
+
+function sanitizePdfFilename(name: string, fallback: string): string {
+  const cleaned = name
+    .normalize("NFC")
+    .replace(/[/\\?%*:|"<>]/g, "_")
+    .replace(/[\r\n\u0000]/g, "")
+    .trim();
+
+  const safe = cleaned || fallback;
+  return safe.slice(0, 160);
+}
+
+function encodeRFC5987ValueChars(str: string): string {
+  return encodeURIComponent(str)
+    .replace(/['()]/g, escape)
+    .replace(/\*/g, "%2A");
+}
+
+function contentDisposition(
+  disposition: "inline" | "attachment",
+  filename: string,
+): string {
+  const fallback = filename.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "_");
+  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeRFC5987ValueChars(filename)}`;
+}
+
+app.get('/jobs/:id/files/:kind', async (c) => {
+  const id = c.req.param('id')
+  const kind = c.req.param('kind')
+  const receipt = c.req.query('receipt')
+  const download = c.req.query('download') === '1'
+  
+  if (!receipt) return c.json({ error: 'Missing receipt' }, 401)
+  
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, public_receipt_hash FROM jobs WHERE id = ? AND deleted_at IS NULL`).bind(id).first()
+  if (!job) return c.json({ error: 'Not found' }, 404)
+  
+  const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
+  const userReceiptHash = await sha256Hex(id + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
+  
+  let valid = false;
+  if (job.owner_type === 'public' && job.public_receipt_hash === publicReceiptHash) valid = true;
+  if (job.owner_type === 'user' && receipt === userReceiptHash) valid = true;
+  
+  if (!valid) return c.json({ error: 'Unauthorized' }, 401)
+  
+  if (job.status !== 'completed' && job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 404)
+
+  if (job.download_expires_at) {
+    const expiresAt = new Date(job.download_expires_at as string).getTime();
+    if (Date.now() > expiresAt) {
+      return c.json({ error: 'Download expired' }, 410)
+    }
+  }
+
+  let type = '';
+  if (kind === 'translated.pdf') type = 'mono';
+  else if (kind === 'bilingual.pdf') type = 'dual';
+  else return c.json({ error: 'Invalid kind' }, 400)
+
+  const originalName = (job.original_filename as string) || 'document';
+  const baseName = originalName.toLowerCase().endsWith('.pdf') ? originalName.slice(0, -4) : originalName;
+  const kindSuffix = type === 'mono' ? 'translated' : 'bilingual';
+  const newFilename = sanitizePdfFilename(`${baseName}_${kindSuffix}.pdf`, `${kindSuffix}.pdf`);
+
+  const initHeaders: any = {}
+  const rangeHeader = c.req.header('Range')
+  if (rangeHeader) {
+    initHeaders['Range'] = rangeHeader
+  }
+
+  const resp = await fetchPrivateApi(c.env, `/internal/jobs/${id}/download?filename=${encodeURIComponent(newFilename)}&type=${encodeURIComponent(type)}`, {
+    headers: initHeaders
+  })
+  
+  if (resp.status === 409 || resp.status === 404) {
+      return c.json({ error: 'File not found' }, 404)
+  }
+  if (!resp.ok) {
+      return c.json({ error: 'Internal server error' }, 500)
+  }
+
+  const disposition = download ? "attachment" : "inline";
+  const newHeaders = new Headers(resp.headers)
+  newHeaders.set('Content-Disposition', contentDisposition(disposition, newFilename))
+  newHeaders.set('Content-Type', 'application/pdf')
+  
+  return new Response(resp.body, {
+    status: resp.status,
+    headers: newHeaders
   })
 })
 
