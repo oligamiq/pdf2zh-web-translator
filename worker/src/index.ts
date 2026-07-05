@@ -1453,6 +1453,7 @@ app.get('/jobs/:id/files/:kind', async (c) => {
   newHeaders.set('Content-Type', 'application/pdf')
   newHeaders.set('Cache-Control', 'private, no-store')
   newHeaders.set('X-Content-Type-Options', 'nosniff')
+  newHeaders.set('Referrer-Policy', 'no-referrer')
   
   return new Response(resp.body, {
     status: resp.status,
