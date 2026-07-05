@@ -1207,8 +1207,9 @@ app.delete('/public/jobs/:id', async (c) => {
   const receipt = c.req.query('receipt');
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403);
   
-  const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt);
-  await c.env.DB.prepare(`UPDATE jobs SET deleted_at = datetime('now') WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).run();
+  const { job, usedHash } = await getPublicJobWithLegacyFallback(c.env, id, receipt, 'id, created_at, download_expires_at');
+  if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403);
+  await c.env.DB.prepare(`UPDATE jobs SET deleted_at = datetime('now') WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, usedHash).run();
   return c.json({ success: true });
 });
 
@@ -1290,13 +1291,46 @@ app.get('/jobs/:id/download', authMiddleware, async (c) => {
 })
 
 
+
+async function getPublicJobWithLegacyFallback(env: Env, id: string, receipt: string, selectFields: string) {
+  const publicReceiptHash = await hmacSha256Hex(env.RECEIPT_SIGNING_SECRET || 'secret', receipt);
+  let job = await env.DB.prepare(`SELECT ${selectFields} FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, publicReceiptHash).first();
+  let isLegacyFallback = false;
+  let usedHash = publicReceiptHash;
+
+  if (!job) {
+    const legacyPublicReceiptHash = await sha256Hex(receipt + (env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
+    const legacyJob = await env.DB.prepare(`SELECT ${selectFields} FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, legacyPublicReceiptHash).first();
+    
+    if (legacyJob && (legacyJob.created_at as string) < '2026-07-06T00:00:00.000Z') {
+      const compatUntil = env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : Infinity;
+      if (Date.now() < compatUntil) {
+         job = legacyJob;
+         isLegacyFallback = true;
+         usedHash = legacyPublicReceiptHash;
+      }
+    }
+  }
+
+  if (isLegacyFallback && job) {
+    console.log(JSON.stringify({
+      job_id: id,
+      auth_result: 'legacy_token_accepted',
+      token_version: 'legacy-sha256',
+      created_at: job.created_at,
+      download_expires_at: job.download_expires_at
+    }));
+  }
+
+  return { job, usedHash };
+}
+
 app.get('/public/jobs/:id', async (c) => {
   const id = c.req.param('id')
   const receipt = c.req.query('receipt')
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
   
-  const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt)
-  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, publicReceiptHash).first()
+  const { job } = await getPublicJobWithLegacyFallback(c.env, id, receipt, 'id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name')
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   return c.json(job)
 })
@@ -1306,8 +1340,7 @@ app.get('/public/jobs/:id/attempts', async (c) => {
   const receipt = c.req.query('receipt')
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
   
-  const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt)
-  const job = await c.env.DB.prepare(`SELECT id FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, publicReceiptHash).first()
+  const { job } = await getPublicJobWithLegacyFallback(c.env, id, receipt, 'id')
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   
   const attempts = await c.env.DB.prepare(`SELECT display_name, model, provider_type, total_requests, success_count, failure_count, last_http_status, last_error, rate_limit_count FROM job_api_provider_snapshots WHERE job_id = ? ORDER BY priority ASC`).bind(id).all()
@@ -1319,8 +1352,7 @@ app.get('/public/jobs/:id/log', async (c) => {
   const receipt = c.req.query('receipt')
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
 
-  const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt)
-  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, publicReceiptHash).first()
+  const { job } = await getPublicJobWithLegacyFallback(c.env, id, receipt, 'id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name')
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
 
   const offset = c.req.query('offset') || '0'
@@ -1339,8 +1371,7 @@ app.get('/public/jobs/:id/download', async (c) => {
   const receipt = c.req.query('receipt')
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
 
-  const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt)
-  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, publicReceiptHash).first()
+  const { job } = await getPublicJobWithLegacyFallback(c.env, id, receipt, 'id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name')
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   if (job.status !== 'completed' && job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
 
@@ -1400,13 +1431,50 @@ app.get('/jobs/:id/files/:kind', async (c) => {
   if (!job) return c.json({ error: 'Not found' }, 404)
   
   let valid = false;
+  let isLegacyFallback = false;
   if (job.owner_type === 'public') {
     const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt)
-    if (timingSafeEqual(job.public_receipt_hash, publicReceiptHash)) valid = true;
+    if (timingSafeEqual(job.public_receipt_hash, publicReceiptHash)) {
+      valid = true;
+    } else {
+      const legacyHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
+      if (timingSafeEqual(job.public_receipt_hash, legacyHash)) {
+        if ((job.created_at as string) < '2026-07-06T00:00:00.000Z') {
+          const compatUntil = c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : Infinity;
+          if (Date.now() < compatUntil) {
+            valid = true;
+            isLegacyFallback = true;
+          }
+        }
+      }
+    }
   } else if (job.owner_type === 'user') {
     const exp = job.download_expires_at || '';
     const userReceiptHash = await hmacSha256Hex(c.env.PDF_VIEW_TOKEN_SECRET || 'secret', `pdf-job:v1:${job.id}:${exp}`)
-    if (timingSafeEqual(receipt, userReceiptHash)) valid = true;
+    if (timingSafeEqual(receipt, userReceiptHash)) {
+      valid = true;
+    } else {
+      const legacyToken = await sha256Hex(job.id + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
+      if (timingSafeEqual(receipt, legacyToken)) {
+        if ((job.created_at as string) < '2026-07-06T00:00:00.000Z') {
+          const compatUntil = c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : Infinity;
+          if (Date.now() < compatUntil) {
+            valid = true;
+            isLegacyFallback = true;
+          }
+        }
+      }
+    }
+  }
+  
+  if (isLegacyFallback && valid) {
+    console.log(JSON.stringify({
+      job_id: job.id,
+      auth_result: 'legacy_token_accepted',
+      token_version: 'legacy-sha256',
+      created_at: job.created_at,
+      download_expires_at: job.download_expires_at
+    }));
   }
   
   if (!valid) return c.json({ error: 'Unauthorized' }, 401)
