@@ -1302,8 +1302,8 @@ async function getPublicJobWithLegacyFallback(env: Env, id: string, receipt: str
     const legacyPublicReceiptHash = await sha256Hex(receipt + (env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
     const legacyJob = await env.DB.prepare(`SELECT ${selectFields} FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, legacyPublicReceiptHash).first();
     
-    if (legacyJob && (legacyJob.created_at as string) < '2026-07-06T00:00:00.000Z') {
-      // Temporary compatibility for pre-2026-07-06 PDF view tokens.
+    if (legacyJob && (legacyJob.created_at as string) < '2026-07-05T15:00:00.000Z') {
+      // Temporary compatibility for pre-2026-07-05T15 PDF view tokens.
       // Remove after LEGACY_PDF_TOKEN_COMPAT_UNTIL.
       const compatUntil = env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : 0;
       if (Date.now() < compatUntil) {
@@ -1423,7 +1423,19 @@ function contentDisposition(
 
 app.get('/jobs/:id/files/:kind', async (c) => {
   const id = c.req.param('id')
-  const kind = c.req.param('kind')
+  const kindParam = c.req.param('kind')
+  
+  if (!kindParam.endsWith('.pdf')) {
+    const url = new URL(c.req.url);
+    url.pathname = `${url.pathname}.pdf`;
+    return c.redirect(url.toString(), 308);
+  }
+  
+  const kind = kindParam.replace('.pdf', '');
+  if (kind !== 'translated' && kind !== 'bilingual') {
+    return c.json({ error: 'Invalid file kind' }, 400);
+  }
+  
   const receipt = c.req.query('receipt')
   const download = c.req.query('download') === '1'
   
@@ -1441,8 +1453,8 @@ app.get('/jobs/:id/files/:kind', async (c) => {
     } else {
       const legacyHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
       if (timingSafeEqual(job.public_receipt_hash, legacyHash)) {
-        if ((job.created_at as string) < '2026-07-06T00:00:00.000Z') {
-          // Temporary compatibility for pre-2026-07-06 PDF view tokens.
+        if ((job.created_at as string) < '2026-07-05T15:00:00.000Z') {
+          // Temporary compatibility for pre-2026-07-05T15 PDF view tokens.
           // Remove after LEGACY_PDF_TOKEN_COMPAT_UNTIL.
           const compatUntil = c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : 0;
           if (Date.now() < compatUntil) {
@@ -1460,8 +1472,8 @@ app.get('/jobs/:id/files/:kind', async (c) => {
     } else {
       const legacyToken = await sha256Hex(job.id + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
       if (timingSafeEqual(receipt, legacyToken)) {
-        if ((job.created_at as string) < '2026-07-06T00:00:00.000Z') {
-          // Temporary compatibility for pre-2026-07-06 PDF view tokens.
+        if ((job.created_at as string) < '2026-07-05T15:00:00.000Z') {
+          // Temporary compatibility for pre-2026-07-05T15 PDF view tokens.
           // Remove after LEGACY_PDF_TOKEN_COMPAT_UNTIL.
           const compatUntil = c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : 0;
           if (Date.now() < compatUntil) {

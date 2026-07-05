@@ -85,7 +85,9 @@ test.describe('PDF View and Download Links', () => {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': disposition,
-          'Content-Length': body.length.toString()
+          'Content-Length': body.length.toString(),
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Expose-Headers': 'Content-Disposition'
         },
         body: body
       });
@@ -105,23 +107,46 @@ test.describe('PDF View and Download Links', () => {
     // Check view links
     const translatedViewLink = page.locator('a:has-text("翻訳PDF 表示")');
     await expect(translatedViewLink).toBeVisible();
-    await expect(translatedViewLink).toHaveAttribute('href', /^\/jobs\/test-job-id-123\/files\/translated\.pdf\?receipt=valid-view-token-123$/);
     await expect(translatedViewLink).toHaveAttribute('target', '_blank');
 
+    const href1 = await translatedViewLink.getAttribute('href');
+    const url1 = new URL(href1!);
+    expect(url1.origin).toBe('https://pdftr.oligami.workers.dev');
+    expect(url1.pathname).toBe('/jobs/test-job-id-123/files/translated.pdf');
+    expect(url1.searchParams.get('receipt')).toBe('valid-view-token-123');
+    expect(url1.searchParams.has('download')).toBe(false);
+
     const bilingualViewLink = page.locator('a:has-text("対訳PDF 表示")');
-    await expect(bilingualViewLink).toHaveAttribute('href', /^\/jobs\/test-job-id-123\/files\/bilingual\.pdf\?receipt=valid-view-token-123$/);
+    const href2 = await bilingualViewLink.getAttribute('href');
+    const url2 = new URL(href2!);
+    expect(url2.origin).toBe('https://pdftr.oligami.workers.dev');
+    expect(url2.pathname).toBe('/jobs/test-job-id-123/files/bilingual.pdf');
+    expect(url2.searchParams.get('receipt')).toBe('valid-view-token-123');
+    expect(url2.searchParams.has('download')).toBe(false);
 
     // Check download links
     const translatedDlLink = page.locator('a:has-text("翻訳PDF 保存")');
-    await expect(translatedDlLink).toHaveAttribute('href', /^\/jobs\/test-job-id-123\/files\/translated\.pdf\?receipt=valid-view-token-123&download=1$/);
+    const href3 = await translatedDlLink.getAttribute('href');
+    const url3 = new URL(href3!);
+    expect(url3.origin).toBe('https://pdftr.oligami.workers.dev');
+    expect(url3.pathname).toBe('/jobs/test-job-id-123/files/translated.pdf');
+    expect(url3.searchParams.get('receipt')).toBe('valid-view-token-123');
+    expect(url3.searchParams.get('download')).toBe('1');
+    await expect(translatedDlLink).not.toHaveAttribute('target', '_blank');
 
     const bilingualDlLink = page.locator('a:has-text("対訳PDF 保存")');
-    await expect(bilingualDlLink).toHaveAttribute('href', /^\/jobs\/test-job-id-123\/files\/bilingual\.pdf\?receipt=valid-view-token-123&download=1$/);
+    const href4 = await bilingualDlLink.getAttribute('href');
+    const url4 = new URL(href4!);
+    expect(url4.origin).toBe('https://pdftr.oligami.workers.dev');
+    expect(url4.pathname).toBe('/jobs/test-job-id-123/files/bilingual.pdf');
+    expect(url4.searchParams.get('receipt')).toBe('valid-view-token-123');
+    expect(url4.searchParams.get('download')).toBe('1');
+    await expect(bilingualDlLink).not.toHaveAttribute('target', '_blank');
   });
 
   test('should provide correct headers for PDF viewing (inline)', async ({ page }) => {
     const res = await page.evaluate(async () => {
-      const r = await fetch(window.location.origin + '/jobs/test-job-id-123/files/translated.pdf?receipt=valid-view-token-123');
+      const r = await fetch('https://pdftr.oligami.workers.dev/jobs/test-job-id-123/files/translated.pdf?receipt=valid-view-token-123');
       return { status: r.status, contentType: r.headers.get('content-type'), contentDisposition: r.headers.get('content-disposition') };
     });
     expect(res.status).toBe(200);
@@ -132,7 +157,7 @@ test.describe('PDF View and Download Links', () => {
 
   test('should provide correct headers for PDF downloading (attachment)', async ({ page }) => {
     const res = await page.evaluate(async () => {
-      const r = await fetch(window.location.origin + '/jobs/test-job-id-123/files/translated.pdf?receipt=valid-view-token-123&download=1');
+      const r = await fetch('https://pdftr.oligami.workers.dev/jobs/test-job-id-123/files/translated.pdf?receipt=valid-view-token-123&download=1');
       return { status: r.status, contentType: r.headers.get('content-type'), contentDisposition: r.headers.get('content-disposition') };
     });
     expect(res.status).toBe(200);
@@ -157,7 +182,7 @@ test.describe('PDF View and Download Links', () => {
 
   test('missing receipt should reject with 401', async ({ page }) => {
     const res = await page.evaluate(async () => {
-      const r = await fetch(window.location.origin + '/jobs/test-job-id-123/files/translated.pdf');
+      const r = await fetch('https://pdftr.oligami.workers.dev/jobs/test-job-id-123/files/translated.pdf');
       return { status: r.status };
     });
     expect(res.status).toBe(401);
@@ -165,7 +190,7 @@ test.describe('PDF View and Download Links', () => {
 
   test('invalid kind should return 400', async ({ page }) => {
     const res = await page.evaluate(async () => {
-      const r = await fetch(window.location.origin + '/jobs/test-job-id-123/files/invalid.pdf?receipt=valid-view-token-123');
+      const r = await fetch('https://pdftr.oligami.workers.dev/jobs/test-job-id-123/files/invalid.pdf?receipt=valid-view-token-123');
       return { status: r.status };
     });
     expect(res.status).toBe(400);

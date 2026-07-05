@@ -194,7 +194,7 @@ export function getPdfUrl(job: any, kind: "translated" | "bilingual", download: 
     receipt = publicJobs[job.id];
   }
   const domain = BASE_URL || 'https://pdftr.oligami.workers.dev';
-  let url = `${domain}/jobs/${job.id}/files/${kind}?receipt=${receipt || ''}`;
+  let url = `${domain}/jobs/${job.id}/files/${kind}.pdf?receipt=${receipt || ''}`;
   if (download) {
     url += '&download=1';
   }
