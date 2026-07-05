@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vinxi dev",
-    "build": "vinxi build && node ../scripts/prerender-static-pages.mjs",
-    "build:e2e": "VITE_E2E_AUTH_BYPASS=true vinxi build --mode e2e && node ../scripts/prerender-static-pages.mjs && rm -rf dist-e2e && mv dist dist-e2e",
+    "build": "vinxi build && node ../scripts/prerender-static-pages.mjs && node ../scripts/inject-early-hints.mjs",
+    "build:e2e": "VITE_E2E_AUTH_BYPASS=true vinxi build --mode e2e && node ../scripts/prerender-static-pages.mjs && node ../scripts/inject-early-hints.mjs && rm -rf dist-e2e && mv dist dist-e2e",
     "start": "vinxi start",
     "preview": "npx wrangler pages dev dist --ip 127.0.0.1 --port 4173",
     "test:e2e": "playwright test",
