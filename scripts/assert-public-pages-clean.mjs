@@ -38,7 +38,10 @@ for (const target of targets) {
 
   let html = fs.readFileSync(filePath, 'utf-8');
   
-  const head = html.split("</head>")[0] ?? "";
+  let head = html.split("</head>")[0] ?? "";
+
+  // Remove <style>...</style> content to avoid false positives from inlined CSS
+  head = head.replace(new RegExp('<style[^>]*>.*?</style>', 'gis'), '');
 
   // 1. Check head content
   for (const marker of prohibitedMarkers) {
