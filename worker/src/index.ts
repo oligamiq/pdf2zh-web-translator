@@ -1303,7 +1303,9 @@ async function getPublicJobWithLegacyFallback(env: Env, id: string, receipt: str
     const legacyJob = await env.DB.prepare(`SELECT ${selectFields} FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, legacyPublicReceiptHash).first();
     
     if (legacyJob && (legacyJob.created_at as string) < '2026-07-06T00:00:00.000Z') {
-      const compatUntil = env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : Infinity;
+      // Temporary compatibility for pre-2026-07-06 PDF view tokens.
+      // Remove after LEGACY_PDF_TOKEN_COMPAT_UNTIL.
+      const compatUntil = env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : 0;
       if (Date.now() < compatUntil) {
          job = legacyJob;
          isLegacyFallback = true;
@@ -1440,7 +1442,9 @@ app.get('/jobs/:id/files/:kind', async (c) => {
       const legacyHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
       if (timingSafeEqual(job.public_receipt_hash, legacyHash)) {
         if ((job.created_at as string) < '2026-07-06T00:00:00.000Z') {
-          const compatUntil = c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : Infinity;
+          // Temporary compatibility for pre-2026-07-06 PDF view tokens.
+          // Remove after LEGACY_PDF_TOKEN_COMPAT_UNTIL.
+          const compatUntil = c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : 0;
           if (Date.now() < compatUntil) {
             valid = true;
             isLegacyFallback = true;
@@ -1457,7 +1461,9 @@ app.get('/jobs/:id/files/:kind', async (c) => {
       const legacyToken = await sha256Hex(job.id + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
       if (timingSafeEqual(receipt, legacyToken)) {
         if ((job.created_at as string) < '2026-07-06T00:00:00.000Z') {
-          const compatUntil = c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : Infinity;
+          // Temporary compatibility for pre-2026-07-06 PDF view tokens.
+          // Remove after LEGACY_PDF_TOKEN_COMPAT_UNTIL.
+          const compatUntil = c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : 0;
           if (Date.now() < compatUntil) {
             valid = true;
             isLegacyFallback = true;
