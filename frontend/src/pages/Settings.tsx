@@ -1,5 +1,6 @@
 import { createSignal, createEffect, Show } from 'solid-js';
 import { A } from '@solidjs/router';
+import './Settings.css';
 import { getApiBasicSettings, updateApiBasicSettings } from '../api';
 import { currentUser } from '../authState';
 
@@ -98,8 +99,9 @@ export default function Settings() {
             <form onSubmit={handleSave} style="margin-top: 24px;">
               <div class="settings-section">
                 <div class="form-group">
-                  <label class="form-label">翻訳先言語 (デフォルト)</label>
+                  <label class="form-label" for="default-target-language">翻訳先言語 (デフォルト)</label>
                   <select
+                    id="default-target-language"
                     class="form-select"
                     value={targetLanguage()}
                     onChange={(e) => setTargetLanguage(e.currentTarget.value)}
@@ -118,13 +120,14 @@ export default function Settings() {
               <div class="settings-section" style="border-top: 1px solid var(--border); padding-top: 24px;">
                 <div class="form-group">
                   <div class="form-label-flex">
-                    <label class="form-label" style="margin-bottom:0;">Ollama API Key</label>
+                    <label class="form-label" style="margin-bottom:0;" for="ollama-api-key">Ollama API Key</label>
                     <Show when={hasApiKey()}>
                       <span class="status-badge status-success" style="background: transparent; border: 1px solid var(--success); color: var(--success);">保存済み</span>
                     </Show>
                   </div>
                   <div style="margin-top: 8px;">
                     <input
+                      id="ollama-api-key"
                       type="password"
                       placeholder={hasApiKey() ? "新しいAPIキーを入力して上書き" : "••••••••••••••••"}
                       class="form-input"

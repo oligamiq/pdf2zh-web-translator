@@ -46,7 +46,7 @@ export default function LogViewer(props: { jobId: string, status: string }) {
 
   return (
     <div class="panel live-log-card" style="margin-bottom: 0; margin-top: 24px;">
-      <h3 style="margin-top: 0; flex-shrink: 0;">Live Log Tail</h3>
+      <h2 style="margin-top: 0; flex-shrink: 0;">Live Log Tail</h2>
       <div 
         ref={logContainerRef}
         class="live-log-scroll live-log-body"

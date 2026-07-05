@@ -129,7 +129,7 @@ export default function HeaderAuth() {
               >
                 {signingIn() ? 'ログイン中...' : (
                   <>
-                    <span class="guest-auth-chip" style={{ background: "var(--accent)", color: "white" }}>ゲスト</span>
+                    <span class="guest-auth-chip" style={{ background: "var(--primary-hover)", color: "white" }}>ゲスト</span>
                     <span class="guest-auth-label">ログイン</span>
                   </>
                 )}

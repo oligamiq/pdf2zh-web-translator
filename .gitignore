@@ -35,3 +35,12 @@ frontend/.lighthouse/
 lh-*.json
 lighthouse-*.json
 
+# Logs and test reports
+frontend/network-*.txt
+frontend/*-logs.txt
+frontend/lh-*.json
+frontend/lh-*.html
+frontend/lighthouse-*.json
+frontend/lighthouse-*.html
+frontend/test-results/
+frontend/playwright-report/

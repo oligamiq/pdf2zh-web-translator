@@ -3,6 +3,7 @@ import { useParams, A } from '@solidjs/router';
 import { getJob, downloadJob, getJobAttempts } from '../api';
 import LogViewer from '../components/LogViewer';
 import { authReady, currentUser } from '../authState';
+import './JobDetail.css';
 
 export default function JobDetail() {
   const params = useParams();
@@ -115,7 +116,7 @@ export default function JobDetail() {
 
         <Show when={attempts() && attempts().length > 0}>
           <div class="panel" style="flex-shrink: 0; margin-top: 16px;">
-            <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 1rem; color: var(--text);">APIルーティング</h3>
+            <h2 style="margin-top: 0; margin-bottom: 12px; font-size: 1rem; color: var(--text);">APIルーティング</h2>
             <div style="display: flex; flex-direction: column; gap: 8px;">
               {attempts().map((stat: any) => (
                 <div style={`padding: 12px; border-radius: 6px; background: rgba(0,0,0,0.2); border-left: 4px solid ${

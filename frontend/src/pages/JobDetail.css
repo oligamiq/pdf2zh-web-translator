@@ -1,0 +1,67 @@
+/* Job Summary Grid in JobDetail */
+.job-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
+  gap: 16px;
+  align-items: start;
+}
+.job-summary-item {
+  min-width: 0;
+}
+.job-summary-filename {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  font-weight: 500;
+}
+.job-summary-status {
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .job-summary-grid {
+    grid-template-columns: 1fr;
+  }
+  .job-summary-status {
+    justify-self: start;
+  }
+}
+
+/* Live Log Tail */
+.log-card,
+.live-log,
+.live-log details,
+.live-log summary,
+.live-log pre {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.live-log {
+  width: 100%;
+  overflow: hidden;
+}
+
+.live-log details {
+  width: 100%;
+}
+
+.live-log summary {
+  width: 100%;
+  cursor: pointer;
+  word-break: break-word;
+}
+
+.live-log pre, pre.log-tail {
+  width: 100%;
+  margin: 0;
+  padding: 0.75rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: 0.5rem;
+  box-sizing: border-box;
+}
+

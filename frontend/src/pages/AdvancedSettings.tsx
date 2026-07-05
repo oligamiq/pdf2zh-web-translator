@@ -3,6 +3,7 @@ import { A } from '@solidjs/router';
 import { getApiProviders, addApiProvider, updateApiProvider, deleteApiProvider, testApiProvider, reorderApiProviders } from '../api';
 import type { ApiProvider } from '../api';
 import { currentUser } from '../authState';
+import './Settings.css';
 
 export default function AdvancedSettings() {
   const [loading, setLoading] = createSignal(true);
@@ -317,8 +318,9 @@ export default function AdvancedSettings() {
                 <div class="modal-body">
                   <form id="provider-form" onSubmit={handleSaveProvider}>
                     <div class="form-group">
-                      <label class="form-label">プリセット (Providerタイプ)</label>
+                      <label class="form-label" for="provider-type-select">プリセット (Providerタイプ)</label>
                       <select
+                        id="provider-type-select"
                         class="form-select"
                         value={providerType()}
                         onChange={(e) => setProviderType(e.currentTarget.value)}
@@ -332,8 +334,9 @@ export default function AdvancedSettings() {
                     </div>
 
                     <div class="form-group">
-                      <label class="form-label">表示名 (任意)</label>
+                      <label class="form-label" for="display-name-input">表示名 (任意)</label>
                       <input
+                        id="display-name-input"
                         type="text"
                         placeholder="例: Ollama Backup"
                         class="form-input"
@@ -344,8 +347,9 @@ export default function AdvancedSettings() {
 
                     <Show when={providerType() !== 'siliconflow_free'} fallback={<div class="alert alert-warning" style="margin-top: 16px;">この無料サービスではAPIキー、Base URL、Modelの入力は不要です。</div>}>
                       <div class="form-group">
-                        <label class="form-label">Base URL</label>
+                        <label class="form-label" for="base-url-input">Base URL</label>
                         <input
+                          id="base-url-input"
                           type="text"
                           placeholder="例: https://api.openai.com/v1"
                           class="form-input"
@@ -355,8 +359,9 @@ export default function AdvancedSettings() {
                       </div>
 
                       <div class="form-group">
-                        <label class="form-label">Model</label>
+                        <label class="form-label" for="model-input">Model</label>
                         <input
+                          id="model-input"
                           type="text"
                           placeholder="例: gpt-4o"
                           class="form-input"
@@ -367,12 +372,13 @@ export default function AdvancedSettings() {
 
                       <div class="form-group">
                         <div class="form-label-flex">
-                          <label class="form-label" style="margin:0;">API Key</label>
+                          <label class="form-label" style="margin:0;" for="api-key-input">API Key</label>
                           <Show when={editingId() !== null && providers().find(p => p.id === editingId())?.has_api_key}>
                             <span class="status-badge status-success" style="background: transparent; border: 1px solid var(--success); color: var(--success);">保存済み</span>
                           </Show>
                         </div>
                         <input
+                          id="api-key-input"
                           type="password"
                           placeholder={editingId() !== null ? "空のままなら既存キーを保持" : "APIキーを入力"}
                           class="form-input"
@@ -383,8 +389,9 @@ export default function AdvancedSettings() {
                       </div>
                       <Show when={isOpenAICompatible(providerType())}>
                         <div class="form-group" style="margin-top: 20px;">
-                          <label class="form-label">タイムアウト(秒)</label>
+                          <label class="form-label" for="timeout-input">タイムアウト(秒)</label>
                           <input
+                            id="timeout-input"
                             type="number"
                             class="form-input"
                             value={timeoutSeconds()}
@@ -393,8 +400,9 @@ export default function AdvancedSettings() {
                         </div>
 
                         <div class="form-group">
-                          <label class="form-label">推論の強さ (Reasoning effort)</label>
+                          <label class="form-label" for="reasoning-effort-select">推論の強さ (Reasoning effort)</label>
                           <select
+                            id="reasoning-effort-select"
                             class="form-select"
                             value={reasoningEffort()}
                             onChange={(e) => setReasoningEffort(e.currentTarget.value)}

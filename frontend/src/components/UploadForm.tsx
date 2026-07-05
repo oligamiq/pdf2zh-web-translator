@@ -31,7 +31,10 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
       }
     };
     
+    let turnstileLoaded = false;
     const loadTurnstile = () => {
+      if (turnstileLoaded) return;
+      turnstileLoaded = true;
       // @ts-ignore
       if (window.turnstile || document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]')) {
         setTimeout(renderTurnstile, 500);
@@ -45,7 +48,9 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
       document.head.appendChild(script);
     };
 
-    loadTurnstile();
+    // Export to make it accessible to event listeners on the dropzone
+    // @ts-ignore
+    window.__triggerTurnstileLoad = loadTurnstile;
 
     // Drag and drop logic...
     function isFileDrag(event: DragEvent) {
@@ -84,6 +89,9 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
       if (!isFileDrag(e)) return;
       
       e.preventDefault();
+      // @ts-ignore
+      if (window.__triggerTurnstileLoad) window.__triggerTurnstileLoad();
+      
       dragCounter++;
       if (e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
         setIsDragging(true);
@@ -166,8 +174,23 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
     }
 
     if (isGuest() && !turnstileToken()) {
-      setError("まずはTurnstileチャレンジを完了してください。");
-      return;
+      // @ts-ignore
+      if (window.__triggerTurnstileLoad) window.__triggerTurnstileLoad();
+      
+      setLoading(true);
+      setError("ボット検証中です...");
+      
+      let waitCount = 0;
+      while (!turnstileToken() && waitCount < 50) {
+        await new Promise(r => setTimeout(r, 100));
+        waitCount++;
+      }
+      
+      if (!turnstileToken()) {
+        setLoading(false);
+        setError("まずはTurnstileチャレンジを完了してください。");
+        return;
+      }
     }
 
     setLoading(true);
@@ -254,7 +277,7 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
           display: 'flex', "align-items": 'center', "justify-content": 'center'
         }}>
           <div style={{ background: 'var(--bg-color)', padding: '24px', "border-radius": '8px', "max-width": '400px', width: '90%' }}>
-            <h3 style={{ margin: '0 0 16px 0', color: 'var(--danger)' }}>APIキーが必要です</h3>
+            <h2 style={{ margin: '0 0 16px 0', color: 'var(--danger)', "font-size": '1.5rem' }}>APIキーが必要です</h2>
             <p style={{ margin: '0 0 24px 0' }}>APIキーが設定されていません。設定画面でAPIキーを登録してください。</p>
             <div style={{ display: 'flex', gap: '12px', "justify-content": 'flex-end' }}>
               <button class="btn btn-secondary" onClick={() => setShowApiKeyModal(false)} style={{ background: 'transparent', border: '1px solid var(--border)' }}>キャンセル</button>
@@ -265,7 +288,7 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
       </Show>
 
       <div class="panel upload-card" data-testid="upload-card" style="text-align: left; position: relative; margin-bottom: 24px;">
-        <h3 class="upload-title" style="margin-top: 0;">アップロード</h3>
+        <h2 class="upload-title" style="margin-top: 0;">アップロード</h2>
         {error() && <div style="color: var(--danger); margin-bottom: 16px; white-space: pre-wrap;">{error()}</div>}
 
       {loading() ? (
@@ -274,12 +297,24 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
         </div>
       ) : (
         <>
-          <div class="dropzone" style="text-align: center; padding: 40px; border: 2px dashed var(--border); position: relative; cursor: pointer; margin-bottom: 16px;">
+          <div 
+            class="dropzone" 
+            style="text-align: center; padding: 40px; border: 2px dashed var(--border); position: relative; cursor: pointer; margin-bottom: 16px;"
+            onMouseEnter={() => {
+              // @ts-ignore
+              if (window.__triggerTurnstileLoad) window.__triggerTurnstileLoad();
+            }}
+            onTouchStart={() => {
+              // @ts-ignore
+              if (window.__triggerTurnstileLoad) window.__triggerTurnstileLoad();
+            }}
+          >
             <Show when={!authReady()}>
               <p style="color: var(--accent); margin-bottom: 8px; font-weight: bold;">サインイン状態を初期化中...</p>
             </Show>
             <p style="color: var(--text-muted); pointer-events: none;">ドラッグ＆ドロップ、またはクリックしてPDFファイルを選択</p>
             <input 
+              aria-label="PDFファイルを選択"
               data-testid="pdf-file-input"
               type="file" 
               accept="application/pdf"
@@ -303,6 +338,14 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
               for="mobile-pdf-file-input"
               data-testid="file-select-button" 
               class={`btn primary-file-button ${!authReady() ? 'disabled' : ''}`}
+              onTouchStart={() => {
+                // @ts-ignore
+                if (window.__triggerTurnstileLoad) window.__triggerTurnstileLoad();
+              }}
+              onMouseEnter={() => {
+                // @ts-ignore
+                if (window.__triggerTurnstileLoad) window.__triggerTurnstileLoad();
+              }}
             >
               {!authReady() ? 'サインイン確認中...' : 'PDFファイルを選択'}
             </label>
@@ -316,8 +359,9 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
       )}
 
       <div style="margin-bottom: 16px;">
-        <label style="display: block; font-weight: bold; margin-bottom: 4px;">翻訳先言語</label>
+        <label style="display: block; font-weight: bold; margin-bottom: 4px;" for="target-language-select">翻訳先言語</label>
         <select 
+          id="target-language-select"
           class="input"
           value={targetLanguage()} 
           onChange={(e) => setTargetLanguage(e.currentTarget.value)}
@@ -334,22 +378,24 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
       </div>
 
       <Show when={limits()}>
-        <details class="guest-limit-details" style="background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--accent); padding: 12px; margin-bottom: 16px; font-size: 14px;">
-          <summary style="cursor: pointer; font-weight: bold; color: var(--accent);">
+        <details class="guest-limit-details">
+          <summary>
             {limits().scope === 'public' 
               ? `ゲスト利用: ${limits().pdf_max_bytes / (1024 * 1024)} MiB / 1日${limits().jobs_per_day}件 / ${limits().public_job_expiry_hours}時間保存`
               : `ログイン中: ${limits().pdf_max_bytes / (1024 * 1024)} MiB / 1日${limits().jobs_per_day}件 / ${limits().retention_days}日間保存`
             }
           </summary>
-          <p style="margin: 8px 0 0 0; color: var(--text-muted);">
+          <p class="guest-limit-details-text">
             {limits().scope === 'public' 
               ? `PDFは${limits().pdf_max_bytes / (1024 * 1024)} MiBまで、1日${limits().jobs_per_day}件まで。結果は${limits().public_job_expiry_hours}時間程度で期限切れになります。`
               : `PDFは${limits().pdf_max_bytes / (1024 * 1024)} MiBまで、1日${limits().jobs_per_day}件まで。履歴は${limits().retention_days}日間保持されます。`
             }
           </p>
-          <A href="/about" style="color: var(--accent); text-decoration: none; font-weight: bold;">&rarr; 利用制限と注意事項</A>
-          <span style="margin: 0 8px; color: var(--border);">|</span>
-          <A href="/licenses" style="color: var(--accent); text-decoration: none; font-weight: bold;">ライセンス</A>
+          <div class="guest-limit-details-links">
+            <A href="/about">&rarr; 利用制限と注意事項</A>
+            <span>|</span>
+            <A href="/licenses">ライセンス</A>
+          </div>
         </details>
       </Show>
 

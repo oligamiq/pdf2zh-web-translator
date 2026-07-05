@@ -100,6 +100,9 @@ test.describe('Public Upload UI', () => {
     // Check Guest mode info box
     await expect(page.locator('summary', { hasText: 'ゲスト利用' })).toBeVisible();
 
+    // Trigger Turnstile load by hovering over the dropzone
+    await page.locator('.dropzone').hover();
+
     // Wait for Turnstile token to be ready
     await expect(page.getByTestId('turnstile-ready')).toBeAttached();
 
@@ -138,6 +141,9 @@ test.describe('Public Upload UI', () => {
     });
 
     await page.goto('/app');
+
+    // Trigger Turnstile load by hovering over the dropzone
+    await page.locator('.dropzone').hover();
 
     // Wait for Turnstile token to be ready
     await expect(page.getByTestId('turnstile-ready')).toBeAttached();

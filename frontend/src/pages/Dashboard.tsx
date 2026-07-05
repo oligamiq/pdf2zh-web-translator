@@ -52,7 +52,7 @@ export default function Dashboard() {
             <Show when={autoLoginTriggered() || currentUser() !== null} fallback={
               <div style="position: relative;">
                 <button class="btn guest-auth-button" data-testid="guest-auth-button" onClick={() => { setAutoLoginTriggered(true); }}>
-                  <span class="guest-auth-chip" style={{ background: "var(--accent)", color: "white" }}>ゲスト</span>
+                  <span class="guest-auth-chip" style={{ background: "var(--primary-hover)", color: "white" }}>ゲスト</span>
                   <span class="guest-auth-label">ログイン</span>
                 </button>
               </div>
