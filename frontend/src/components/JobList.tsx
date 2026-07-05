@@ -99,7 +99,7 @@ export default function JobList(props: { authReady?: boolean, user?: any, refres
 
               <div class="job-actions" data-testid="job-actions">
                 <Show when={job.status === 'completed' || job.status === 'succeeded'}>
-                  <a class="btn" style="background: transparent; border: 1px solid var(--border); color: var(--text);" href={getPdfUrl(job, 'bilingual')} target="_blank">PDFを表示</a>
+                  <a class="btn" style="background: transparent; border: 1px solid var(--border); color: var(--text);" href={getPdfUrl(job, 'bilingual')} target="_blank" rel="external noopener noreferrer" referrerpolicy="no-referrer">PDFを表示</a>
                 </Show>
                 <A href={`/jobs/${job.id}`} class="btn">詳細</A>
                 <button class="btn btn-danger" onClick={() => handleDelete(job.id)}>削除</button>

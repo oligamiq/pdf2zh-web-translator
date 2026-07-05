@@ -23,6 +23,8 @@ export type Env = {
   TURNSTILE_SECRET_KEY?: string;
   TURNSTILE_TEST_BYPASS?: string;
   PUBLIC_RATE_LIMIT_SALT?: string;
+  PDF_VIEW_TOKEN_SECRET?: string;
+  RECEIPT_SIGNING_SECRET?: string;
 
   PUBLIC_FALLBACK_LLM_ENABLED?: string;
   PUBLIC_FALLBACK_LLM_SOURCE?: string;
@@ -67,6 +69,28 @@ async function decryptApiKey(ciphertextB64: string, ivB64: string, secretB64: st
   } catch (e) {
     throw new Error('decryption_failed');
   }
+}
+
+async function hmacSha256Hex(secret: string, data: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
+  return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a == null || b == null || a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; ++i) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
 }
 
 async function sha256Hex(message: string): Promise<string> {
@@ -870,7 +894,7 @@ app.post('/jobs', async (c) => {
       }
       
       receipt = crypto.randomUUID();
-      publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
+      publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt);
       
       const now = new Date();
       publicExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
@@ -1183,7 +1207,7 @@ app.delete('/public/jobs/:id', async (c) => {
   const receipt = c.req.query('receipt');
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403);
   
-  const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
+  const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt);
   await c.env.DB.prepare(`UPDATE jobs SET deleted_at = datetime('now') WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, publicReceiptHash).run();
   return c.json({ success: true });
 });
@@ -1191,13 +1215,12 @@ app.delete('/public/jobs/:id', async (c) => {
 app.get('/jobs', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
   const { results } = await c.env.DB.prepare(
-    `SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name FROM jobs WHERE user_id = ? AND deleted_at IS NULL AND created_at >= datetime('now', '-7 days') ORDER BY created_at DESC`
+    `SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name FROM jobs WHERE user_id = ? AND deleted_at IS NULL AND created_at >= datetime('now', '-7 days') ORDER BY created_at DESC`
   ).bind(uid).all()
   
-  const salt = c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'
   const resultsWithTokens = await Promise.all(results.map(async (job: any) => ({
     ...job,
-    view_token: await sha256Hex(job.id + salt)
+    view_token: await hmacSha256Hex(c.env.PDF_VIEW_TOKEN_SECRET || 'secret', `pdf-job:v1:${job.id}:${job.download_expires_at || ''}`)
   })))
   return c.json(resultsWithTokens)
 })
@@ -1208,7 +1231,8 @@ app.get('/jobs/:id', authMiddleware, async (c) => {
   const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name FROM jobs WHERE id = ? AND user_id = ? AND deleted_at IS NULL`).bind(id, uid).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
   
-  const view_token = await sha256Hex(job.id + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
+  const exp = job.download_expires_at || '';
+  const view_token = await hmacSha256Hex(c.env.PDF_VIEW_TOKEN_SECRET || 'secret', `pdf-job:v1:${job.id}:${exp}`)
   return c.json({ ...job, view_token })
 })
 
@@ -1271,7 +1295,7 @@ app.get('/public/jobs/:id', async (c) => {
   const receipt = c.req.query('receipt')
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
   
-  const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
+  const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt)
   const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, publicReceiptHash).first()
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   return c.json(job)
@@ -1282,7 +1306,7 @@ app.get('/public/jobs/:id/attempts', async (c) => {
   const receipt = c.req.query('receipt')
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
   
-  const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
+  const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt)
   const job = await c.env.DB.prepare(`SELECT id FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, publicReceiptHash).first()
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   
@@ -1295,7 +1319,7 @@ app.get('/public/jobs/:id/log', async (c) => {
   const receipt = c.req.query('receipt')
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
 
-  const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
+  const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt)
   const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, publicReceiptHash).first()
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
 
@@ -1315,7 +1339,7 @@ app.get('/public/jobs/:id/download', async (c) => {
   const receipt = c.req.query('receipt')
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
 
-  const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
+  const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt)
   const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, active_provider_name FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, publicReceiptHash).first()
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   if (job.status !== 'completed' && job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
@@ -1375,12 +1399,15 @@ app.get('/jobs/:id/files/:kind', async (c) => {
   const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, public_receipt_hash FROM jobs WHERE id = ? AND deleted_at IS NULL`).bind(id).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
   
-  const publicReceiptHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
-  const userReceiptHash = await sha256Hex(id + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
-  
   let valid = false;
-  if (job.owner_type === 'public' && job.public_receipt_hash === publicReceiptHash) valid = true;
-  if (job.owner_type === 'user' && receipt === userReceiptHash) valid = true;
+  if (job.owner_type === 'public') {
+    const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt)
+    if (timingSafeEqual(job.public_receipt_hash, publicReceiptHash)) valid = true;
+  } else if (job.owner_type === 'user') {
+    const exp = job.download_expires_at || '';
+    const userReceiptHash = await hmacSha256Hex(c.env.PDF_VIEW_TOKEN_SECRET || 'secret', `pdf-job:v1:${job.id}:${exp}`)
+    if (timingSafeEqual(receipt, userReceiptHash)) valid = true;
+  }
   
   if (!valid) return c.json({ error: 'Unauthorized' }, 401)
   
@@ -1424,6 +1451,8 @@ app.get('/jobs/:id/files/:kind', async (c) => {
   const newHeaders = new Headers(resp.headers)
   newHeaders.set('Content-Disposition', contentDisposition(disposition, newFilename))
   newHeaders.set('Content-Type', 'application/pdf')
+  newHeaders.set('Cache-Control', 'private, no-store')
+  newHeaders.set('X-Content-Type-Options', 'nosniff')
   
   return new Response(resp.body, {
     status: resp.status,
