@@ -1,0 +1,5 @@
+[allowlist]
+description = "Allow test secrets in scripts"
+paths = [
+    "worker/scripts/test-provider-api\\.sh"
+]
