@@ -30,7 +30,7 @@ export type Env = {
   PUBLIC_FALLBACK_LLM_SOURCE?: string;
   PUBLIC_FALLBACK_LLM_BASE_URL?: string;
   PUBLIC_FALLBACK_LLM_MODEL?: string;
-  PUBLIC_FALLBACK_LLM_API_KEY?: string;
+  SILICONFLOW_API_KEY?: string;
   SMOKE_TOKEN?: string;
 }
 
@@ -1844,8 +1844,8 @@ app.post('/internal/smoke/siliconflow', async (c) => {
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (c.env.PUBLIC_FALLBACK_LLM_API_KEY) {
-      headers['Authorization'] = `Bearer ${c.env.PUBLIC_FALLBACK_LLM_API_KEY}`;
+    if (c.env.SILICONFLOW_API_KEY) {
+      headers['Authorization'] = `Bearer ${c.env.SILICONFLOW_API_KEY}`;
     }
 
     const sfResp = await fetch(`${siliconflowBaseUrl}/chat/completions`, {
@@ -1912,10 +1912,10 @@ app.post('/internal/smoke/job', async (c) => {
     let legacyIv = null;
     let legacyKeyVersion = null;
 
-    if (c.env.PUBLIC_FALLBACK_LLM_API_KEY && c.env.USER_SETTINGS_SECRET) {
+    if (c.env.SILICONFLOW_API_KEY && c.env.USER_SETTINGS_SECRET) {
       try {
         const reEncrypted = await encryptApiKey(
-          c.env.PUBLIC_FALLBACK_LLM_API_KEY,
+          c.env.SILICONFLOW_API_KEY,
           c.env.USER_SETTINGS_SECRET,
           `job_api_provider:${id}`
         );
@@ -1924,7 +1924,7 @@ app.post('/internal/smoke/job', async (c) => {
         keyVersion = reEncrypted.keyVersion;
 
         const legacyEncrypted = await encryptApiKey(
-          c.env.PUBLIC_FALLBACK_LLM_API_KEY,
+          c.env.SILICONFLOW_API_KEY,
           c.env.USER_SETTINGS_SECRET,
           `job_llm_snapshot:${id}`
         );

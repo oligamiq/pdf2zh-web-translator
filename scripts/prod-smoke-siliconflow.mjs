@@ -58,17 +58,39 @@ async function main() {
       console.error(`   ❌ Smoke check failed (HTTP ${resp.status})`);
       for (const [key, value] of Object.entries(data.checks || {})) {
         const icon = value === 'ok' ? '✅' : '❌';
-        console.error(`      ${icon} ${key}: ${value}`);
+        let safeValue = value;
+        
+        // Classify the error
+        if (typeof value === 'string' && value.includes('error:')) {
+          if (value.includes('401')) {
+            safeValue = 'invalid_api_key (HTTP 401)';
+          } else if (value.includes('429')) {
+            safeValue = 'provider_429 (Rate Limited)';
+          } else if (value.includes('timeout')) {
+            safeValue = 'provider_timeout';
+          } else if (value.includes('400')) {
+            safeValue = 'model_not_found or bad request (HTTP 400)';
+          } else if (value.includes('empty response')) {
+            safeValue = 'provider_empty_response';
+          } else {
+            safeValue = 'provider_error';
+          }
+        }
+        
+        console.error(`      ${icon} ${key}: ${safeValue}`);
       }
       process.exit(1);
     }
   } catch (err) {
     clearTimeout(timeout);
-    console.error(`   ❌ Request failed: ${err.message}`);
+    let errClass = 'unknown_error';
+    if (err.name === 'AbortError') errClass = 'provider_timeout';
+    console.error(`   ❌ Request failed [${errClass}]`);
     process.exit(1);
   }
 
   console.log('');
+
   
   // --- Test 2: Full PDF translation pipeline ---
   console.log('2. Testing full PDF translation pipeline...');
@@ -130,17 +152,11 @@ async function main() {
   console.log(''); // newline after polling
 
   if (jobStatus === 'failed') {
-    // Fetch logs
+    // Fetch logs securely without printing them entirely
     const resp = await fetch(`${WORKER_URL}/public/jobs/${jobId}?receipt=${receipt}`);
     const data = await resp.json();
-    console.error('   ❌ Job failed!');
-    console.error(`      Error: ${data.job.error_message}`);
-    console.error('      Logs:');
-    if (data.job.log_tail) {
-      for (const line of data.job.log_tail) {
-        console.error(`        ${line}`);
-      }
-    }
+    console.error('   ❌ Job failed! [pipeline_failed]');
+    console.error(`      Error: ${data.job?.error_message || 'Unknown'}`);
     process.exit(1);
   }
 
@@ -152,12 +168,12 @@ async function main() {
     try {
       const resp = await fetch(`${WORKER_URL}/jobs/${jobId}/files/${type}.pdf?receipt=${receipt}`);
       if (!resp.ok || resp.headers.get('content-type') !== 'application/pdf') {
-        console.error(`   ❌ Failed to download ${type} PDF (HTTP ${resp.status}, Content-Type: ${resp.headers.get('content-type')})`);
+        console.error(`   ❌ Failed to download ${type} PDF [pdf_download_failed]`);
         process.exit(1);
       }
       console.log(`      ✅ ${type}.pdf is accessible (Content-Type: ${resp.headers.get('content-type')})`);
     } catch (err) {
-      console.error(`   ❌ Failed to download ${type} PDF: ${err.message}`);
+      console.error(`   ❌ Failed to download ${type} PDF [pdf_download_failed]`);
       process.exit(1);
     }
   }
@@ -171,7 +187,7 @@ async function main() {
       console.log('      ✅ Job deleted');
     }
   } catch (err) {
-    console.warn(`   ⚠️ Failed to delete smoke job: ${err.message}`);
+    console.warn(`   ⚠️ Failed to delete smoke job`);
   }
 
   console.log('');
@@ -179,6 +195,6 @@ async function main() {
 }
 
 main().catch(err => {
-  console.error(`❌ Unexpected error: ${err.message}`);
+  console.error(`❌ Unexpected error [unknown]`);
   process.exit(1);
 });
