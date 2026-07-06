@@ -31,6 +31,7 @@ export type Env = {
   PUBLIC_FALLBACK_LLM_BASE_URL?: string;
   PUBLIC_FALLBACK_LLM_MODEL?: string;
   PUBLIC_FALLBACK_LLM_API_KEY?: string;
+  SMOKE_TOKEN?: string;
 }
 
 // --- Crypto Helpers for User LLM Settings ---
@@ -1458,7 +1459,7 @@ app.get('/jobs/:id/files/:kind', async (c) => {
         }
       }
     }
-  } else if (job.owner_type === 'user') {
+  } else if (job.owner_type === 'user' || job.owner_type === 'firebase') {
     const exp = job.download_expires_at || '';
     const userReceiptHash = await hmacSha256Hex(c.env.PDF_VIEW_TOKEN_SECRET || 'secret', `pdf-job:v1:${job.id}:${exp}`)
     if (timingSafeEqual(receipt, userReceiptHash)) {
@@ -1501,8 +1502,8 @@ app.get('/jobs/:id/files/:kind', async (c) => {
   }
 
   let type = '';
-  if (kind === 'translated.pdf') type = 'mono';
-  else if (kind === 'bilingual.pdf') type = 'dual';
+  if (kind === 'translated') type = 'mono';
+  else if (kind === 'bilingual') type = 'dual';
   else return c.json({ error: 'Invalid kind' }, 400)
 
   const originalName = (job.original_filename as string) || 'document';
@@ -1800,5 +1801,193 @@ app.get('/admin/pc-api-health', async (c) => {
     return c.json({ ok: false, error: err.message }, 502);
   }
 })
+
+// --- Production Smoke Test Endpoint ---
+// Authenticated endpoint for verifying SiliconFlow Free provider connectivity.
+// Token must be set as Cloudflare Worker secret SMOKE_TOKEN.
+
+app.post('/internal/smoke/siliconflow', async (c) => {
+  const token = c.req.header('X-Smoke-Token');
+  if (!c.env.SMOKE_TOKEN || !token || token !== c.env.SMOKE_TOKEN) {
+    return c.json({ error: 'Not found' }, 404);
+  }
+
+  // 1. Check that PUBLIC_FALLBACK_LLM is configured (SiliconFlow Free uses the same backend settings)
+  const checks: Record<string, string> = {};
+
+  // 2. Test SiliconFlow Free provider connectivity via a minimal chat/completion
+  //    SiliconFlow Free is handled by the pc-api-python backend, not directly by the Worker.
+  //    The Worker's role is to create a job snapshot. The actual LLM call goes through
+  //    the pc-api-python router. So we test the backend health + a direct SiliconFlow ping.
+
+  // Test pc-api health
+  try {
+    const pcResp = await fetchPrivateApi(c.env, '/internal/healthz', { signal: AbortSignal.timeout(5000) });
+    checks['pc_api_health'] = pcResp.ok ? 'ok' : `error: HTTP ${pcResp.status}`;
+  } catch (err: any) {
+    checks['pc_api_health'] = `error: ${err.message}`;
+  }
+
+  // Test D1 connectivity
+  try {
+    const dbResult = await c.env.DB.prepare('SELECT 1 AS ok').first();
+    checks['d1'] = dbResult?.ok === 1 ? 'ok' : 'error: unexpected result';
+  } catch (err: any) {
+    checks['d1'] = `error: ${err.message}`;
+  }
+
+  // Test SiliconFlow API direct ping (chat/completions with minimal prompt)
+  const siliconflowBaseUrl = 'https://api.siliconflow.cn/v1';
+  const siliconflowModel = 'Qwen/Qwen2.5-7B-Instruct';
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (c.env.PUBLIC_FALLBACK_LLM_API_KEY) {
+      headers['Authorization'] = `Bearer ${c.env.PUBLIC_FALLBACK_LLM_API_KEY}`;
+    }
+
+    const sfResp = await fetch(`${siliconflowBaseUrl}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: siliconflowModel,
+        messages: [{ role: 'user', content: 'Return exactly OK' }],
+        max_tokens: 8,
+        temperature: 0,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (sfResp.ok) {
+      const data = await sfResp.json() as any;
+      const content = data?.choices?.[0]?.message?.content ?? '';
+      checks['siliconflow_chat'] = content.length > 0 ? 'ok' : 'error: empty response';
+    } else {
+      const text = await sfResp.text();
+      checks['siliconflow_chat'] = `error: HTTP ${sfResp.status} ${text.slice(0, 200)}`;
+    }
+  } catch (err: any) {
+    checks['siliconflow_chat'] = `error: ${err.message}`;
+  }
+
+  const allOk = Object.values(checks).every(v => v === 'ok');
+  return c.json({ ok: allOk, checks }, allOk ? 200 : 502);
+});
+
+app.post('/internal/smoke/job', async (c) => {
+  const token = c.req.header('X-Smoke-Token');
+  if (!c.env.SMOKE_TOKEN || !token || token !== c.env.SMOKE_TOKEN) {
+    return c.json({ error: 'Not found' }, 404);
+  }
+
+  try {
+    const id = crypto.randomUUID();
+    const formData = await c.req.formData();
+    const file = formData.get('pdf') as unknown as File;
+    if (!file) return c.json({ error: 'No pdf file' }, 400);
+
+    const receipt = crypto.randomUUID();
+    const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt);
+
+    const now = new Date();
+    now.setHours(now.getHours() + 1); // 1 hour expiry for smoke job
+    const publicExpiresAt = now.toISOString();
+
+    const fileSizeBytes = file.size;
+
+    // Use Public Fallback credentials (SiliconFlow Free)
+    let llm_source = 'siliconflow_free';
+    let llm_base_url = c.env.PUBLIC_FALLBACK_LLM_BASE_URL || '';
+    let llm_model = c.env.PUBLIC_FALLBACK_LLM_MODEL || '';
+    let llm_credential_mode = 'public_fallback';
+
+    let encKey = null;
+    let iv = null;
+    let keyVersion = null;
+    let legacyEncKey = null;
+    let legacyIv = null;
+    let legacyKeyVersion = null;
+
+    if (c.env.PUBLIC_FALLBACK_LLM_API_KEY && c.env.USER_SETTINGS_SECRET) {
+      try {
+        const reEncrypted = await encryptApiKey(
+          c.env.PUBLIC_FALLBACK_LLM_API_KEY,
+          c.env.USER_SETTINGS_SECRET,
+          `job_api_provider:${id}`
+        );
+        encKey = reEncrypted.ciphertext;
+        iv = reEncrypted.iv;
+        keyVersion = reEncrypted.keyVersion;
+
+        const legacyEncrypted = await encryptApiKey(
+          c.env.PUBLIC_FALLBACK_LLM_API_KEY,
+          c.env.USER_SETTINGS_SECRET,
+          `job_llm_snapshot:${id}`
+        );
+        legacyEncKey = legacyEncrypted.ciphertext;
+        legacyIv = legacyEncrypted.iv;
+        legacyKeyVersion = legacyEncrypted.keyVersion;
+      } catch (e) {
+        return c.json({ error: 'internal_error', message: 'Failed to encrypt fallback API key' }, 500);
+      }
+    }
+
+    // 1. Insert to D1
+    await c.env.DB.prepare(
+      `INSERT INTO jobs (
+        id, user_id, original_filename, status,
+        llm_source, llm_base_url, llm_model,
+        encrypted_api_key_snapshot, api_key_snapshot_iv, api_key_key_version,
+        owner_type, public_receipt_hash, public_client_hash, public_ip_hash,
+        public_expires_at, file_size_bytes, turnstile_verified, llm_credential_mode
+      ) VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      id, 'smoke_user', file.name,
+      llm_source, llm_base_url, llm_model,
+      legacyEncKey, legacyIv, legacyKeyVersion,
+      'public', publicReceiptHash, null, null,
+      publicExpiresAt, fileSizeBytes, 1, llm_credential_mode
+    ).run()
+
+    // Insert into job_api_provider_snapshots
+    await c.env.DB.prepare(`
+        INSERT INTO job_api_provider_snapshots (id, job_id, display_name, provider_type, base_url, model, encrypted_api_key, api_key_iv, api_key_key_version, priority, timeout_seconds, reasoning_effort)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(crypto.randomUUID(), id, 'SiliconFlow Free (Smoke Test)', llm_source, llm_base_url, llm_model, encKey, iv, keyVersion, 1, null, null).run()
+
+    console.log("POST /internal/smoke/job: created smoke job", id)
+
+    // 2. Stream to PC Private API
+    const resp = await fetchPrivateApi(c.env, `/internal/files/${id}/input`, {
+      method: 'PUT',
+      body: file.stream(),
+      // @ts-ignore
+      duplex: 'half'
+    })
+
+    if (!resp.ok) {
+      const privateBody = await resp.text().catch(() => "");
+      await c.env.DB.prepare(`UPDATE jobs SET status = 'failed', error_message = 'Upload failed' WHERE id = ?`).bind(id).run()
+      return c.json({ error: 'private_api_upload_failed', status: resp.status, body: privateBody }, 502)
+    }
+
+    c.executionCtx.waitUntil(
+      fetchPrivateApi(c.env, '/internal/wake', { method: 'POST' })
+        .then(res => res.text())
+        .catch(err => console.error('Failed to wake pc-api:', err))
+    );
+
+    return c.json({ id, status: 'queued', receipt })
+  } catch (err) {
+    return c.json({
+      error: "internal_error",
+      message: err instanceof Error ? err.message : String(err),
+    }, 500);
+  }
+});
 
 export default app

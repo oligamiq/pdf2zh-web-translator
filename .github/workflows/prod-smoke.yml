@@ -1,0 +1,25 @@
+name: Production Smoke Test
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run daily at 09:00 UTC (18:00 JST)
+    - cron: '0 9 * * *'
+
+jobs:
+  smoke-siliconflow:
+    name: SiliconFlow Connectivity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Run SiliconFlow smoke test
+        run: node scripts/prod-smoke-siliconflow.mjs
+        env:
+          PROD_SMOKE_TOKEN: ${{ secrets.PROD_SMOKE_TOKEN }}
+          PROD_WORKER_URL: https://pdftr.oligami.workers.dev
