@@ -19,6 +19,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check Python Syntax
+        run: python3 -m compileall pc-api-python
+
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:

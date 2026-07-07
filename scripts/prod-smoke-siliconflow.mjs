@@ -22,8 +22,24 @@ async function main() {
   console.log(`   Worker: ${WORKER_URL}`);
   console.log('');
 
+  // --- Check Backend Health ---
+  console.log('1. Checking backend health...');
+  try {
+    const healthResp = await fetch(`${WORKER_URL}/health/pc-api`);
+    const healthData = await healthResp.json();
+    if (!healthResp.ok || !healthData.ok) {
+      console.error(`   ❌ Backend container is offline or unreachable:`, healthData);
+      process.exit(1);
+    }
+    console.log(`   ✅ Backend health ok`);
+  } catch (err) {
+    console.error(`   ❌ Failed to check backend health: ${err.message}`);
+    process.exit(1);
+  }
+  console.log('');
+
   // --- Full PDF translation pipeline ---
-  console.log('1. Testing full PDF translation pipeline with siliconflow_free...');
+  console.log('2. Testing full PDF translation pipeline with siliconflow_free...');
   const MOCK_PDF = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<<>>/Contents 4 0 R>>endobj 4 0 obj<</Length 21>>stream\nBT /F1 24 Tf 100 700 Td (Smoke Test) Tj ET\nendstream\nendobj xref\n0 5\n0000000000 65535 f\n0000000009 00000 n\n0000000052 00000 n\n0000000109 00000 n\n0000000204 00000 n\ntrailer<</Size 5/Root 1 0 R>>\nstartxref\n275\n%%EOF');
 
   const formData = new FormData();
