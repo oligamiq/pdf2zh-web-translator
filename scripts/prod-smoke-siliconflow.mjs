@@ -103,8 +103,7 @@ async function main() {
       const resp = await fetch(`${WORKER_URL}/public/jobs/${jobId}?receipt=${receipt}`);
       if (!resp.ok) continue;
 
-      const data = await resp.json();
-      const job = data.job;
+      const job = await resp.json();
       jobStatus = job.status;
       const progress = job.progress_percent || 0;
       
@@ -132,9 +131,18 @@ async function main() {
   if (jobStatus === 'failed') {
     // Fetch logs securely without printing them entirely
     const resp = await fetch(`${WORKER_URL}/public/jobs/${jobId}?receipt=${receipt}`);
-    const data = await resp.json();
+    const job = await resp.json();
     console.error('   ❌ Job failed! [pipeline_failed]');
-    console.error(`      Error: ${data.job?.error_message || 'Unknown'}`);
+    console.error(`      Error: ${job.error_message || 'Unknown'}`);
+    if (job.log_tail) {
+      console.log(`      Safe Log Tail:`);
+      job.log_tail.split('\n').forEach(line => {
+        const lower = line.toLowerCase();
+        if (!lower.includes('receipt') && !lower.includes('token') && !lower.includes('sk-') && !lower.includes('%pdf')) {
+          console.log(`        ${line}`);
+        }
+      });
+    }
     process.exit(1);
   }
 
