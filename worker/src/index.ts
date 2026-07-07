@@ -1832,10 +1832,10 @@ app.post('/internal/smoke/job', async (c) => {
 
     let encKey = null;
     let iv = null;
-    let keyVersion = null;
+    let keyVersion = 'v1';
     let legacyEncKey = null;
     let legacyIv = null;
-    let legacyKeyVersion = null;
+    let legacyKeyVersion = 'v1';
 
     // 1. Insert to D1
     await c.env.DB.prepare(
