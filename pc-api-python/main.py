@@ -563,7 +563,7 @@ async def agent_loop():
                             
                             final_error_str = error_str
                             
-                        try:
+                            try:
                                 await report_progress(last_progress_percent, "failed", error_str, active_provider_name=display_name, log_tail=log_tail[-200:])
                             except Exception:
                                 logger.exception("failed to report failed progress")
@@ -574,22 +574,22 @@ async def agent_loop():
                         finally:
                             pass
 
-                    state = ROUTER_STATES.pop(job_id, None)
-                    final_display_name = state.get("active_provider_name", "Unknown") if state else "Unknown"
-                    if state and state.get("stats"):
-                        stats_list = list(state["stats"].values())
-                        if stats_list:
-                        try:
-                                await client.post(
-                                    f"{worker_api}/agent/jobs/{job_id}/provider_stats",
-                                    json={"stats": stats_list},
-                                    headers={"Authorization": f"Bearer {agent_token}"}
-                                )
-                            except Exception as e:
-                                logger.warning(f"Failed to flush stats: {e}")
-                                
-                    if job_success:
-                            await report_progress(
+                        state = ROUTER_STATES.pop(job_id, None)
+                        final_display_name = state.get("active_provider_name", "Unknown") if state else "Unknown"
+                        if state and state.get("stats"):
+                            stats_list = list(state["stats"].values())
+                            if stats_list:
+                                try:
+                                    await client.post(
+                                        f"{worker_api}/agent/jobs/{job_id}/provider_stats",
+                                        json={"stats": stats_list},
+                                        headers={"Authorization": f"Bearer {agent_token}"}
+                                    )
+                                except Exception as e:
+                                    logger.warning(f"Failed to flush stats: {e}")
+
+                        if job_success:
+                                await report_progress(
                                 percent=100,
                                 phase="completed",
                                 message="Conversion completed",
