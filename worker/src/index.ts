@@ -1808,6 +1808,7 @@ app.post('/internal/smoke/job', async (c) => {
   if (!c.env.SMOKE_TOKEN || !token || token !== c.env.SMOKE_TOKEN) {
     return c.json({ error: 'Not found' }, 404);
   }
+  console.log("smoke_auth_ok");
 
   try {
     const id = crypto.randomUUID();
@@ -1823,6 +1824,7 @@ app.post('/internal/smoke/job', async (c) => {
     const publicExpiresAt = now.toISOString();
 
     const fileSizeBytes = file.size;
+    console.log("smoke_pdf_prepared");
 
     // Use Public Fallback credentials (SiliconFlow Free)
     let llm_source = 'siliconflow_free';
@@ -1837,6 +1839,7 @@ app.post('/internal/smoke/job', async (c) => {
     let legacyIv = null;
     let legacyKeyVersion = 'builtin:none';
 
+    console.log("smoke_d1_insert_start");
     // 1. Insert to D1
     await c.env.DB.prepare(
       `INSERT INTO jobs (
@@ -1859,8 +1862,9 @@ app.post('/internal/smoke/job', async (c) => {
         INSERT INTO job_api_provider_snapshots (id, job_id, display_name, provider_type, base_url, model, encrypted_api_key, api_key_iv, api_key_key_version, priority, timeout_seconds, reasoning_effort)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(crypto.randomUUID(), id, 'SiliconFlow Free (Smoke Test)', llm_source, llm_base_url, llm_model, encKey, iv, keyVersion, 1, null, null).run()
+    console.log("smoke_d1_insert_ok");
 
-    console.log("POST /internal/smoke/job: created smoke job", id)
+    console.log("smoke_job_created: id=", id)
 
     // 2. Stream to PC Private API
     const resp = await fetchPrivateApi(c.env, `/internal/files/${id}/input`, {
@@ -1878,12 +1882,14 @@ app.post('/internal/smoke/job', async (c) => {
 
     c.executionCtx.waitUntil(
       fetchPrivateApi(c.env, '/internal/wake', { method: 'POST' })
-        .then(res => res.text())
-        .catch(err => console.error('Failed to wake pc-api:', err))
-    );
+        .catch(err => console.error("Failed to wake PC API", err))
+    )
 
-    return c.json({ id, status: 'queued', receipt })
-  } catch (err) {
+    return c.json({ id, receipt });
+  } catch (err: any) {
+    if (err.message && err.message.includes('D1_ERROR') && err.message.includes('timeout')) {
+      return c.json({ error: 'd1_timeout', message: err.message }, 500);
+    }
     return c.json({
       error: "internal_error",
       message: err instanceof Error ? err.message : String(err),

@@ -46,28 +46,44 @@ async function main() {
   formData.append('pdf', new Blob([MOCK_PDF], { type: 'application/pdf' }), 'smoke-test.pdf');
 
   let jobId, receipt;
-  try {
-    const resp = await fetch(`${WORKER_URL}/internal/smoke/job`, {
-      method: 'POST',
-      headers: {
-        'X-Smoke-Token': SMOKE_TOKEN,
-      },
-      body: formData,
-    });
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      const resp = await fetch(`${WORKER_URL}/internal/smoke/job`, {
+        method: 'POST',
+        headers: {
+          'X-Smoke-Token': SMOKE_TOKEN,
+        },
+        body: formData,
+      });
 
-    if (!resp.ok) {
-      const text = await resp.text();
-      console.error(`   ❌ Failed to create smoke job (HTTP ${resp.status}): ${text}`);
+      if (!resp.ok) {
+        const text = await resp.text();
+        if (resp.status === 500 && retries > 1) {
+          console.warn(`   ⚠️ Failed to create smoke job (HTTP 500). Retrying... (${text})`);
+          retries--;
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          continue;
+        }
+        console.error(`   ❌ Failed to create smoke job (HTTP ${resp.status}): ${text}`);
+        process.exit(1);
+      }
+
+      const data = await resp.json();
+      jobId = data.id;
+      receipt = data.receipt;
+      console.log(`   ✅ Created smoke job: ${jobId}`);
+      break;
+    } catch (err) {
+      if (retries > 1) {
+        console.warn(`   ⚠️ Error creating smoke job. Retrying... (${err.message})`);
+        retries--;
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        continue;
+      }
+      console.error(`   ❌ Failed to create smoke job: ${err.message}`);
       process.exit(1);
     }
-
-    const data = await resp.json();
-    jobId = data.id;
-    receipt = data.receipt;
-    console.log(`   ✅ Created smoke job: ${jobId}`);
-  } catch (err) {
-    console.error(`   ❌ Failed to create smoke job: ${err.message}`);
-    process.exit(1);
   }
 
   // Poll until completion
@@ -88,9 +104,25 @@ async function main() {
       if (!resp.ok) continue;
 
       const data = await resp.json();
-      jobStatus = data.job.status;
-      const progress = data.job.progress_percent || 0;
-      process.stdout.write(`\r      Status: ${jobStatus} (${progress}%)     `);
+      const job = data.job;
+      jobStatus = job.status;
+      const progress = job.progress_percent || 0;
+      
+      console.log(`\n--- Job Polling Update ---`);
+      console.log(`Job ID: ${job.id}`);
+      console.log(`Status: ${job.status} (${progress}%)`);
+      console.log(`Updated At: ${job.updated_at}`);
+      if (job.error_code) console.log(`Error Code: ${job.error_code}`);
+      if (job.progress_phase) console.log(`Phase: ${job.progress_phase}`);
+      if (job.log_tail) {
+        console.log(`Safe Log Tail:`);
+        job.log_tail.split('\n').forEach(line => {
+          const lower = line.toLowerCase();
+          if (!lower.includes('receipt') && !lower.includes('token') && !lower.includes('sk-') && !lower.includes('%pdf')) {
+            console.log(`  ${line}`);
+          }
+        });
+      }
     } catch (err) {
       // ignore transient errors
     }
