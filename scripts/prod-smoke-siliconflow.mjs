@@ -22,78 +22,8 @@ async function main() {
   console.log(`   Worker: ${WORKER_URL}`);
   console.log('');
 
-  // --- Test 1: SiliconFlow connectivity via smoke endpoint ---
-  console.log('1. Testing SiliconFlow connectivity via smoke endpoint...');
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000);
-
-  try {
-    const resp = await fetch(`${WORKER_URL}/internal/smoke/siliconflow`, {
-      method: 'POST',
-      headers: {
-        'X-Smoke-Token': SMOKE_TOKEN,
-        'Content-Type': 'application/json',
-      },
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-
-    if (resp.status === 404) {
-      console.error('❌ Smoke endpoint returned 404. Check:');
-      console.error('   - SMOKE_TOKEN secret is set on the Worker');
-      console.error('   - The Worker has been deployed with the smoke endpoint');
-      process.exit(1);
-    }
-
-    const data = await resp.json();
-
-    if (resp.ok && data.ok) {
-      console.log('   ✅ All checks passed');
-      for (const [key, value] of Object.entries(data.checks)) {
-        console.log(`      ${key}: ${value}`);
-      }
-    } else {
-      console.error(`   ❌ Smoke check failed (HTTP ${resp.status})`);
-      for (const [key, value] of Object.entries(data.checks || {})) {
-        const icon = value === 'ok' ? '✅' : '❌';
-        let safeValue = value;
-        
-        // Classify the error
-        if (typeof value === 'string' && value.includes('error:')) {
-          if (value.includes('401')) {
-            safeValue = 'invalid_api_key (HTTP 401)';
-          } else if (value.includes('429')) {
-            safeValue = 'provider_429 (Rate Limited)';
-          } else if (value.includes('timeout')) {
-            safeValue = 'provider_timeout';
-          } else if (value.includes('400')) {
-            safeValue = 'model_not_found or bad request (HTTP 400)';
-          } else if (value.includes('empty response')) {
-            safeValue = 'provider_empty_response';
-          } else {
-            safeValue = 'provider_error';
-          }
-        }
-        
-        console.error(`      ${icon} ${key}: ${safeValue}`);
-      }
-      process.exit(1);
-    }
-  } catch (err) {
-    clearTimeout(timeout);
-    let errClass = 'unknown_error';
-    if (err.name === 'AbortError') errClass = 'provider_timeout';
-    console.error(`   ❌ Request failed [${errClass}]`);
-    process.exit(1);
-  }
-
-  console.log('');
-
-  
-  // --- Test 2: Full PDF translation pipeline ---
-  console.log('2. Testing full PDF translation pipeline...');
+  // --- Full PDF translation pipeline ---
+  console.log('1. Testing full PDF translation pipeline with siliconflow_free...');
   const MOCK_PDF = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<<>>/Contents 4 0 R>>endobj 4 0 obj<</Length 21>>stream\nBT /F1 24 Tf 100 700 Td (Smoke Test) Tj ET\nendstream\nendobj xref\n0 5\n0000000000 65535 f\n0000000009 00000 n\n0000000052 00000 n\n0000000109 00000 n\n0000000204 00000 n\ntrailer<</Size 5/Root 1 0 R>>\nstartxref\n275\n%%EOF');
 
   const formData = new FormData();

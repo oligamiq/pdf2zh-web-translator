@@ -1803,81 +1803,6 @@ app.get('/admin/pc-api-health', async (c) => {
 })
 
 // --- Production Smoke Test Endpoint ---
-// Authenticated endpoint for verifying SiliconFlow Free provider connectivity.
-// Token must be set as Cloudflare Worker secret SMOKE_TOKEN.
-
-app.post('/internal/smoke/siliconflow', async (c) => {
-  const token = c.req.header('X-Smoke-Token');
-  if (!c.env.SMOKE_TOKEN || !token || token !== c.env.SMOKE_TOKEN) {
-    return c.json({ error: 'Not found' }, 404);
-  }
-
-  // 1. Check that PUBLIC_FALLBACK_LLM is configured (SiliconFlow Free uses the same backend settings)
-  const checks: Record<string, string> = {};
-
-  // 2. Test SiliconFlow Free provider connectivity via a minimal chat/completion
-  //    SiliconFlow Free is handled by the pc-api-python backend, not directly by the Worker.
-  //    The Worker's role is to create a job snapshot. The actual LLM call goes through
-  //    the pc-api-python router. So we test the backend health + a direct SiliconFlow ping.
-
-  // Test pc-api health
-  try {
-    const pcResp = await fetchPrivateApi(c.env, '/internal/healthz', { signal: AbortSignal.timeout(5000) });
-    checks['pc_api_health'] = pcResp.ok ? 'ok' : `error: HTTP ${pcResp.status}`;
-  } catch (err: any) {
-    checks['pc_api_health'] = `error: ${err.message}`;
-  }
-
-  // Test D1 connectivity
-  try {
-    const dbResult = await c.env.DB.prepare('SELECT 1 AS ok').first();
-    checks['d1'] = dbResult?.ok === 1 ? 'ok' : 'error: unexpected result';
-  } catch (err: any) {
-    checks['d1'] = `error: ${err.message}`;
-  }
-
-  // Test SiliconFlow API direct ping (chat/completions with minimal prompt)
-  const siliconflowBaseUrl = 'https://api.siliconflow.cn/v1';
-  const siliconflowModel = 'Qwen/Qwen2.5-7B-Instruct';
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (c.env.SILICONFLOW_API_KEY) {
-      headers['Authorization'] = `Bearer ${c.env.SILICONFLOW_API_KEY}`;
-    }
-
-    const sfResp = await fetch(`${siliconflowBaseUrl}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: siliconflowModel,
-        messages: [{ role: 'user', content: 'Return exactly OK' }],
-        max_tokens: 8,
-        temperature: 0,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (sfResp.ok) {
-      const data = await sfResp.json() as any;
-      const content = data?.choices?.[0]?.message?.content ?? '';
-      checks['siliconflow_chat'] = content.length > 0 ? 'ok' : 'error: empty response';
-    } else {
-      const text = await sfResp.text();
-      checks['siliconflow_chat'] = `error: HTTP ${sfResp.status} ${text.slice(0, 200)}`;
-    }
-  } catch (err: any) {
-    checks['siliconflow_chat'] = `error: ${err.message}`;
-  }
-
-  const allOk = Object.values(checks).every(v => v === 'ok');
-  return c.json({ ok: allOk, checks }, allOk ? 200 : 502);
-});
-
 app.post('/internal/smoke/job', async (c) => {
   const token = c.req.header('X-Smoke-Token');
   if (!c.env.SMOKE_TOKEN || !token || token !== c.env.SMOKE_TOKEN) {
@@ -1911,30 +1836,6 @@ app.post('/internal/smoke/job', async (c) => {
     let legacyEncKey = null;
     let legacyIv = null;
     let legacyKeyVersion = null;
-
-    if (c.env.SILICONFLOW_API_KEY && c.env.USER_SETTINGS_SECRET) {
-      try {
-        const reEncrypted = await encryptApiKey(
-          c.env.SILICONFLOW_API_KEY,
-          c.env.USER_SETTINGS_SECRET,
-          `job_api_provider:${id}`
-        );
-        encKey = reEncrypted.ciphertext;
-        iv = reEncrypted.iv;
-        keyVersion = reEncrypted.keyVersion;
-
-        const legacyEncrypted = await encryptApiKey(
-          c.env.SILICONFLOW_API_KEY,
-          c.env.USER_SETTINGS_SECRET,
-          `job_llm_snapshot:${id}`
-        );
-        legacyEncKey = legacyEncrypted.ciphertext;
-        legacyIv = legacyEncrypted.iv;
-        legacyKeyVersion = legacyEncrypted.keyVersion;
-      } catch (e) {
-        return c.json({ error: 'internal_error', message: 'Failed to encrypt fallback API key' }, 500);
-      }
-    }
 
     // 1. Insert to D1
     await c.env.DB.prepare(

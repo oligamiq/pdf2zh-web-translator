@@ -410,27 +410,51 @@ async def agent_loop():
                             "active_provider_name": provider_snapshots[0].get("display_name") if provider_snapshots else "Unknown"
                         }
                         
-                        translate_engine_settings = {
-                            "translate_engine_type": "OpenAICompatible",
-                            "openai_compatible_model": "router",
-                            "openai_compatible_base_url": f"{os.environ.get('PC_API_INTERNAL_BASE_URL', 'http://127.0.0.1:8080')}/router/{job_id}/v1",
-                            "openai_compatible_api_key": "dummy"
-                        }
-                        logger.info(f"Using router proxy base url: {os.environ.get('PC_API_INTERNAL_BASE_URL', 'http://127.0.0.1:8080')}/router/<redacted>/v1")
-                        
-                        settings = SettingsModel(
-                            translation={"lang_in": lang_in, "lang_out": lang_out, "output": output_dir},
-                            pdf={"watermark_output_mode": watermark_output_mode},
-                            translate_engine_settings=translate_engine_settings
-                        )
+                        engines_to_try = []
+                        for provider in provider_snapshots:
+                            if provider.get("provider_type") == "siliconflow_free":
+                                engines_to_try.append({
+                                    "engine_config": {"translate_engine_type": "SiliconFlowFree"},
+                                    "display_name": provider.get("display_name"),
+                                    "id": provider.get("id"),
+                                    "model": provider.get("model")
+                                })
+                            else:
+                                # We only add the router ONCE. The router handles all HTTP providers.
+                                if not any(e["engine_config"].get("translate_engine_type") == "OpenAICompatible" for e in engines_to_try):
+                                    engines_to_try.append({
+                                        "engine_config": {
+                                            "translate_engine_type": "OpenAICompatible",
+                                            "openai_compatible_model": "router",
+                                            "openai_compatible_base_url": f"{os.environ.get('PC_API_INTERNAL_BASE_URL', 'http://127.0.0.1:8080')}/router/{job_id}/v1",
+                                            "openai_compatible_api_key": "dummy"
+                                        },
+                                        "display_name": provider.get("display_name"),
+                                        "id": provider.get("id"),
+                                        "model": provider.get("model")
+                                    })
 
-                        await report_progress(10, "preparing", "Preparing translation via local proxy router")
-                        if provider_snapshots:
-                            await report_attempt(provider_snapshots[0].get("id"), 1, provider_snapshots[0].get("display_name"), provider_snapshots[0].get("model"), "running")
+                        await report_progress(10, "preparing", "Preparing translation engines")
 
                         last_progress_time = asyncio.get_event_loop().time()
                         last_progress_percent = 15
-                        stream_started = False
+                        
+                        log_tail = []
+
+                        for engine_idx, engine_info in enumerate(engines_to_try):
+                            if job_success:
+                                break
+                                
+                            translate_engine_settings = engine_info["engine_config"]
+                            
+                            settings = SettingsModel(
+                                translation={"lang_in": lang_in, "lang_out": lang_out, "output": output_dir},
+                                pdf={"watermark_output_mode": watermark_output_mode},
+                                translate_engine_settings=translate_engine_settings
+                            )
+
+                            await report_attempt(engine_info.get("id"), engine_idx + 1, engine_info.get("display_name"), engine_info.get("model"), "running")
+                            stream_started = False
                         
                         try:
                             async for event in do_translate_async_stream(settings, input_path):
@@ -529,25 +553,27 @@ async def agent_loop():
                             except Exception:
                                 logger.exception("failed to report failed progress")
                             
-                            if provider_snapshots:
-                                await report_attempt(provider_snapshots[0].get("id"), 1, display_name, provider_snapshots[0].get("model"), "failed", http_status=http_status_code, error_message=error_str)
+                                if engine_info.get("id"):
+                                    await report_attempt(engine_info.get("id"), engine_idx + 1, display_name, engine_info.get("model"), "failed", http_status=http_status_code, error_message=error_str)
                             
                         finally:
-                            state = ROUTER_STATES.pop(job_id, None)
-                            final_display_name = state.get("active_provider_name", "Unknown") if state else "Unknown"
-                            if state and state.get("stats"):
-                                stats_list = list(state["stats"].values())
-                                if stats_list:
-                                    try:
-                                        await client.post(
-                                            f"{worker_api}/agent/jobs/{job_id}/provider_stats",
-                                            json={"stats": stats_list},
-                                            headers={"Authorization": f"Bearer {agent_token}"}
-                                        )
-                                    except Exception as e:
-                                        logger.warning(f"Failed to flush stats: {e}")
+                            pass
 
-                        if job_success:
+                    state = ROUTER_STATES.pop(job_id, None)
+                    final_display_name = state.get("active_provider_name", "Unknown") if state else "Unknown"
+                    if state and state.get("stats"):
+                        stats_list = list(state["stats"].values())
+                        if stats_list:
+                            try:
+                                await client.post(
+                                    f"{worker_api}/agent/jobs/{job_id}/provider_stats",
+                                    json={"stats": stats_list},
+                                    headers={"Authorization": f"Bearer {agent_token}"}
+                                )
+                            except Exception as e:
+                                logger.warning(f"Failed to flush stats: {e}")
+                                
+                    if job_success:
                             await report_progress(
                                 percent=100,
                                 phase="completed",
