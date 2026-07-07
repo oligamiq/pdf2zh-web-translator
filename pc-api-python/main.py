@@ -417,7 +417,8 @@ async def agent_loop():
                                     "engine_config": {"translate_engine_type": "SiliconFlowFree"},
                                     "display_name": provider.get("display_name"),
                                     "id": provider.get("id"),
-                                    "model": provider.get("model")
+                                    "model": provider.get("model"),
+                                    "provider_type": "siliconflow_free"
                                 })
                             else:
                                 # We only add the router ONCE. The router handles all HTTP providers.
@@ -431,7 +432,8 @@ async def agent_loop():
                                         },
                                         "display_name": provider.get("display_name"),
                                         "id": provider.get("id"),
-                                        "model": provider.get("model")
+                                        "model": provider.get("model"),
+                                        "provider_type": "router_mixed"
                                     })
 
                         await report_progress(10, "preparing", "Preparing translation engines")
@@ -455,7 +457,20 @@ async def agent_loop():
 
                             await report_attempt(engine_info.get("id"), engine_idx + 1, engine_info.get("display_name"), engine_info.get("model"), "running")
                             stream_started = False
-                        
+                            
+                            engine_type_val = translate_engine_settings.get("translate_engine_type")
+                            route_val = 'router' if engine_type_val == 'OpenAICompatible' else 'pdf2zh_native'
+                            router_used_val = 'true' if engine_type_val == 'OpenAICompatible' else 'false'
+                            
+                            logger.info(f"Engine info: provider={engine_info.get('provider_type')}, engine={engine_type_val}, route={route_val}")
+                            
+                            log_tail.append(f"--- Engine Info ---")
+                            log_tail.append(f"provider: {engine_info.get('provider_type')}")
+                            log_tail.append(f"engine: {engine_type_val}")
+                            log_tail.append(f"route: {route_val}")
+                            log_tail.append(f"router_used: {router_used_val}")
+                            log_tail.append(f"-------------------")
+                            
                         try:
                             async for event in do_translate_async_stream(settings, input_path):
                                 stream_started = True
@@ -548,7 +563,7 @@ async def agent_loop():
                             
                             final_error_str = error_str
                             
-                            try:
+                        try:
                                 await report_progress(last_progress_percent, "failed", error_str, active_provider_name=display_name, log_tail=log_tail[-200:])
                             except Exception:
                                 logger.exception("failed to report failed progress")
@@ -564,7 +579,7 @@ async def agent_loop():
                     if state and state.get("stats"):
                         stats_list = list(state["stats"].values())
                         if stats_list:
-                            try:
+                        try:
                                 await client.post(
                                     f"{worker_api}/agent/jobs/{job_id}/provider_stats",
                                     json={"stats": stats_list},
