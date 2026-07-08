@@ -9,6 +9,13 @@
 //   PROD_SMOKE_TOKEN  (required) - The smoke endpoint auth token
 //   PROD_WORKER_URL   (optional) - Worker base URL (default: https://pdftr.oligami.workers.dev)
 
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const WORKER_URL = process.env.PROD_WORKER_URL || 'https://pdftr.oligami.workers.dev';
 const SMOKE_TOKEN = process.env.PROD_SMOKE_TOKEN;
 
@@ -40,7 +47,8 @@ async function main() {
 
   // --- Full PDF translation pipeline ---
   console.log('2. Testing full PDF translation pipeline with siliconflow_free...');
-  const MOCK_PDF = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<<>>/Contents 4 0 R>>endobj 4 0 obj<</Length 21>>stream\nBT /F1 24 Tf 100 700 Td (Smoke Test) Tj ET\nendstream\nendobj xref\n0 5\n0000000000 65535 f\n0000000009 00000 n\n0000000052 00000 n\n0000000109 00000 n\n0000000204 00000 n\ntrailer<</Size 5/Root 1 0 R>>\nstartxref\n275\n%%EOF');
+  const fixturePath = path.join(__dirname, 'fixtures', 'smoke-paragraph.pdf');
+  const MOCK_PDF = fs.readFileSync(fixturePath);
 
   const formData = new FormData();
   formData.append('pdf', new Blob([MOCK_PDF], { type: 'application/pdf' }), 'smoke-test.pdf');
@@ -132,8 +140,18 @@ async function main() {
     // Fetch logs securely without printing them entirely
     const resp = await fetch(`${WORKER_URL}/public/jobs/${jobId}?receipt=${receipt}`);
     const job = await resp.json();
-    console.error('   ❌ Job failed! [pipeline_failed]');
-    console.error(`      Error: ${job.error_message || 'Unknown'}`);
+    let errCode = 'pipeline_failed';
+    const errorMsg = job.error_message || 'Unknown';
+    if (errorMsg.includes('no paragraphs')) {
+      errCode = 'pdf_parse_no_paragraphs';
+    } else if (errorMsg.includes('Babeldoc translation error')) {
+      errCode = 'babeldoc_parse_failed';
+    } else if (errorMsg.includes('siliconflow')) {
+      errCode = 'pdf2zh_siliconflowfree_failed';
+    }
+
+    console.error(`   ❌ Job failed! [${errCode}]`);
+    console.error(`      Error: ${errorMsg}`);
     if (job.log_tail) {
       console.log(`      Safe Log Tail:`);
       job.log_tail.split('\n').forEach(line => {
