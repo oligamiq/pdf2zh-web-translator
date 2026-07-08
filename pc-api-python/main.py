@@ -484,8 +484,8 @@ async def agent_loop():
                                 if not log_tail or log_tail[-1] != log_msg:
                                     log_tail.append(log_msg)
                             
-                                if len(log_tail) > 50:
-                                    log_tail.pop(0)
+                                if len(log_tail) > 100:
+                                    log_tail.pop(6)
                                 
                                 with open(log_path, 'a', encoding='utf-8') as f:
                                     f.write(log_msg + "\n")
