@@ -20,6 +20,7 @@ const WORKER_URL = process.env.PROD_WORKER_URL || 'https://pdftr.oligami.workers
 const SMOKE_TOKEN = process.env.PROD_SMOKE_TOKEN;
 
 function writeSummary(content) {
+  fs.appendFileSync('smoke-summary.md', content + '\n');
   if (process.env.GITHUB_STEP_SUMMARY) {
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, content + '\n');
   }

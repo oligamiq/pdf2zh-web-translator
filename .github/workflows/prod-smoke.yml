@@ -63,10 +63,10 @@ jobs:
         run: |
           ISSUE_TITLE="prod-smoke failure"
           
-          # Read GITHUB_STEP_SUMMARY carefully
+          # Read smoke-summary.md carefully
           BODY="Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          if [ -f "$GITHUB_STEP_SUMMARY" ]; then
-            BODY=$(cat $GITHUB_STEP_SUMMARY)
+          if [ -f "smoke-summary.md" ]; then
+            BODY=$(cat smoke-summary.md)
             BODY="${BODY}
           
           Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
