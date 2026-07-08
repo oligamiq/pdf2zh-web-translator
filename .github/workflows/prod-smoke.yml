@@ -14,6 +14,11 @@ on:
       - 'scripts/fixtures/**'
       - 'pc-api-python/**'
 
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
 jobs:
   smoke-siliconflow:
     name: SiliconFlow Connectivity
@@ -35,6 +40,7 @@ jobs:
           fi
 
       - name: Run SiliconFlow smoke test
+        id: smoke
         run: |
           set -o pipefail
           npm run smoke:prod-siliconflow 2>&1 | tee prod-smoke.log
@@ -49,3 +55,43 @@ jobs:
           name: prod-smoke-log
           path: prod-smoke.log
           retention-days: 7
+
+      - name: Handle Failure (Create/Update Issue)
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_TITLE="prod-smoke failure"
+          
+          # Read GITHUB_STEP_SUMMARY carefully
+          BODY="Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ -f "$GITHUB_STEP_SUMMARY" ]; then
+            BODY=$(cat $GITHUB_STEP_SUMMARY)
+            BODY="${BODY}
+
+Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
+          
+          # Check if issue exists
+          ISSUE_NUMBER=$(gh issue list --search "in:title \"$ISSUE_TITLE\" state:open" --json number --jq '.[0].number')
+          
+          if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          else
+            gh issue create --title "$ISSUE_TITLE" --body "$BODY"
+          fi
+
+      - name: Handle Success (Close Issue)
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_TITLE="prod-smoke failure"
+          ISSUE_NUMBER=$(gh issue list --search "in:title \"$ISSUE_TITLE\" state:open" --json number --jq '.[0].number')
+          
+          if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body "Smoke test succeeded! 🎉
+
+Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            gh issue close "$ISSUE_NUMBER" --reason completed
+          fi
