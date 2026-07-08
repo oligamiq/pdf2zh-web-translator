@@ -279,11 +279,20 @@ async def agent_loop():
                         passed_log_tail = kwargs.get("log_tail")
                         if passed_log_tail is not None:
                             if isinstance(passed_log_tail, list):
-                                payload["log_tail"] = "\n".join(passed_log_tail)[-4000:]
+                                text = "\n".join(passed_log_tail)
                             else:
-                                payload["log_tail"] = str(passed_log_tail)[-4000:]
+                                text = str(passed_log_tail)
+                            
+                            if len(text) > 4000:
+                                payload["log_tail"] = text[:400] + "\n...[truncated]...\n" + text[-3500:]
+                            else:
+                                payload["log_tail"] = text
                         elif error_msg:
-                            payload["log_tail"] = "\n".join(log_tail)[-4000:]
+                            text = "\n".join(log_tail)
+                            if len(text) > 4000:
+                                payload["log_tail"] = text[:400] + "\n...[truncated]...\n" + text[-3500:]
+                            else:
+                                payload["log_tail"] = text
                     
                         try:
                             await client.post(
