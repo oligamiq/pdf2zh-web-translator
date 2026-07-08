@@ -68,8 +68,8 @@ jobs:
           if [ -f "$GITHUB_STEP_SUMMARY" ]; then
             BODY=$(cat $GITHUB_STEP_SUMMARY)
             BODY="${BODY}
-
-Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           fi
           
           # Check if issue exists
@@ -91,7 +91,7 @@ Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ gith
           
           if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
             gh issue comment "$ISSUE_NUMBER" --body "Smoke test succeeded! 🎉
-
-Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             gh issue close "$ISSUE_NUMBER" --reason completed
           fi
