@@ -44,3 +44,9 @@ frontend/lighthouse-*.json
 frontend/lighthouse-*.html
 frontend/test-results/
 frontend/playwright-report/
+
+# Temporary Python scripts
+*_fixed.py
+*_old.py
+fix_*.py
+*.bak
