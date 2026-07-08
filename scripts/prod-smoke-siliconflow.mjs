@@ -165,6 +165,27 @@ async function main() {
   }
 
   console.log('   ✅ Job completed successfully');
+  
+  // Verify expected logging in log_tail
+  console.log('   Verifying job logs (provider/engine/routing)...');
+  const verifyResp = await fetch(`${WORKER_URL}/public/jobs/${jobId}?receipt=${receipt}`);
+  const jobResult = await verifyResp.json();
+  const logTail = jobResult.log_tail || '';
+  
+  const requiredLogs = [
+    'provider: siliconflow_free',
+    'engine: SiliconFlowFree',
+    'route: pdf2zh_native',
+    'router_used: false'
+  ];
+  
+  for (const expected of requiredLogs) {
+    if (!logTail.includes(expected)) {
+      console.error(`   ❌ Verification failed: log_tail missing expected output "${expected}"`);
+      process.exit(1);
+    }
+  }
+  console.log('      ✅ Log verification passed');
 
   // Verify downloads
   console.log('   Verifying downloads...');
