@@ -5,6 +5,14 @@ on:
   schedule:
     # Run daily at 09:00 UTC (18:00 JST)
     - cron: '0 9 * * *'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/prod-smoke.yml'
+      - 'scripts/prod-smoke-siliconflow.mjs'
+      - 'scripts/fixtures/**'
+      - 'pc-api-python/**'
 
 jobs:
   smoke-siliconflow:
@@ -18,8 +26,26 @@ jobs:
         with:
           node-version: 24
 
+      - name: Check Secret
+        run: |
+          if [ -z "${{ secrets.PROD_SMOKE_TOKEN }}" ]; then
+            echo "## ❌ Error: PROD_SMOKE_TOKEN is missing" >> $GITHUB_STEP_SUMMARY
+            echo "missing_smoke_token" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
       - name: Run SiliconFlow smoke test
-        run: node scripts/prod-smoke-siliconflow.mjs
+        run: |
+          set -o pipefail
+          npm run smoke:prod-siliconflow 2>&1 | tee prod-smoke.log
         env:
           PROD_SMOKE_TOKEN: ${{ secrets.PROD_SMOKE_TOKEN }}
           PROD_WORKER_URL: https://pdftr.oligami.workers.dev
+
+      - name: Upload Smoke Log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prod-smoke-log
+          path: prod-smoke.log
+          retention-days: 7
