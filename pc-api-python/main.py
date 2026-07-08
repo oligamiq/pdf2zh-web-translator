@@ -594,7 +594,8 @@ async def agent_loop():
                                 phase="completed",
                                 message="Conversion completed",
                                 status="completed",
-                                active_provider_name=final_display_name
+                                active_provider_name=final_display_name,
+                                log_tail=log_tail[-200:]
                             )
                         else:
                             await report_progress(
