@@ -52,8 +52,8 @@ fi
 # 4. Capture Previous State for Rollback
 PREV_DIGEST=""
 if docker compose ps -q pc-api &>/dev/null; then
-  PREV_IMAGE=$(docker inspect --format='{{.Config.Image}}' $(docker compose ps -q pc-api))
-  PREV_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $PREV_IMAGE 2>/dev/null || echo "")
+  PREV_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$(docker compose ps -q pc-api)")
+  PREV_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$PREV_IMAGE" 2>/dev/null || echo "")
 fi
 
 # 5. Start Deployment
@@ -78,8 +78,8 @@ echo "Waiting for health check..."
 CONTAINER_ID=$(docker compose -f docker-compose.yml -f docker-compose.autodeploy.yml ps -q pc-api)
 
 HEALTHY=false
-for i in {1..12}; do
-  STATUS=$(docker inspect --format='{{.State.Health.Status}}' $CONTAINER_ID 2>/dev/null || echo "unknown")
+for _ in {1..12}; do
+  STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_ID" 2>/dev/null || echo "unknown")
   if [ "$STATUS" == "healthy" ]; then
     HEALTHY=true
     break
@@ -91,7 +91,7 @@ done
 # 7. Verify and Finalize
 if [ "$HEALTHY" = true ]; then
   sleep 2
-  GIT_SHA=$(docker exec $CONTAINER_ID python -c "import json, urllib.request; print(json.load(urllib.request.urlopen('http://127.0.0.1:8080/internal/healthz', timeout=3)).get('git_sha', ''))" || echo "")
+  GIT_SHA=$(docker exec "$CONTAINER_ID" python -c "import json, urllib.request; print(json.load(urllib.request.urlopen('http://127.0.0.1:8080/internal/healthz', timeout=3)).get('git_sha', ''))" || echo "")
   echo "✅ pc-api is healthy! git_sha: $GIT_SHA"
   echo ""
   echo "installation completed"
