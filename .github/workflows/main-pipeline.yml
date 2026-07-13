@@ -32,7 +32,7 @@ jobs:
             exit 1
           fi
           # Check Watchtower is scoped to pc-api only
-          if ! grep -q "com.centurylinklabs.watchtower.enable=true" /tmp/pdftr-compose-effective.yml; then
+          if ! grep -q "com.centurylinklabs.watchtower.enable: \"true\"" /tmp/pdftr-compose-effective.yml; then
             echo "❌ Error: Watchtower label not found for pc-api"
             exit 1
           fi
