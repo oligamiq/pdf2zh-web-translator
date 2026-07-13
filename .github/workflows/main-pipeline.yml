@@ -21,10 +21,18 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 -m compileall pc-api-python
       - run: |
-          export CLOUDFLARE_TUNNEL_TOKEN=dummy
+          cat << 'EOF' > .env
+          CLOUDFLARE_TUNNEL_TOKEN=dummy
+          WORKER_API_BASE_URL=http://dummy
+          HDD_BASE=/dummy
+          PROXY_SECRET=dummy
+          AGENT_TOKEN=dummy
+          PDF2ZH_DEFAULT_BASE_URL=http://dummy
+          PDF2ZH_DEFAULT_MODEL=dummy
+          PDF2ZH_DEFAULT_API_KEY=dummy
+          EOF
           docker compose -f docker-compose.yml config > /dev/null
       - run: |
-          export CLOUDFLARE_TUNNEL_TOKEN=dummy
           docker compose -f docker-compose.yml -f docker-compose.autodeploy.yml config --format json > /tmp/pdftr-compose-effective.json
       - run: |
           BUILD_VAL=$(jq -r '.services["pc-api"].build // empty' /tmp/pdftr-compose-effective.json)
