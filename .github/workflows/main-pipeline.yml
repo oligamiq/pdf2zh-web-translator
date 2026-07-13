@@ -72,7 +72,7 @@ jobs:
             -e PC_AGENT_AUTOSTART=false \
             pc-api-ci
           
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if docker exec pc-api-ci python -c '
           import json
           import urllib.request
