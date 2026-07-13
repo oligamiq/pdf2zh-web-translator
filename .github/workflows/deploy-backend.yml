@@ -34,7 +34,7 @@ jobs:
           MAX_RETRIES=60
           RETRY_COUNT=0
           
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+          while [ "$RETRY_COUNT" -lt "$MAX_RETRIES" ]; do
             HEALTH_JSON=$(curl -s "$WORKER_URL/health/pc-api" || echo "{}")
             REPORTED_SHA=$(echo "$HEALTH_JSON" | jq -r '.git_sha // "unknown"')
             STATUS=$(echo "$HEALTH_JSON" | jq -r '.status // "unknown"')
@@ -50,5 +50,5 @@ jobs:
           done
           
           echo "❌ Timed out waiting for deployment or healthcheck failed."
-          echo "HEALTH_JSON=$HEALTH_JSON" >> $GITHUB_ENV
+          echo "HEALTH_JSON=$HEALTH_JSON" >> "$GITHUB_ENV"
           exit 1

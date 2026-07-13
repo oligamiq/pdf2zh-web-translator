@@ -23,11 +23,11 @@ jobs:
         with:
           node-version: 24
 
-      - name: Check Secret
+      - name: Check Token
         run: |
           if [ -z "${{ secrets.PROD_SMOKE_TOKEN }}" ]; then
-            echo "## ❌ Error: PROD_SMOKE_TOKEN is missing" >> $GITHUB_STEP_SUMMARY
-            echo "missing_smoke_token" >> $GITHUB_STEP_SUMMARY
+            echo "## ❌ Error: PROD_SMOKE_TOKEN is missing" >> "$GITHUB_STEP_SUMMARY"
+            echo "missing_smoke_token" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
