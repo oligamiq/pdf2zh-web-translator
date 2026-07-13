@@ -44,13 +44,10 @@ jobs:
           echo "✅ Config validation passed!"
       - name: actionlint
         run: |
-          bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          curl -sL https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz | tar xz actionlint
           ./actionlint
-      - name: Lint installer
-        run: |
-          if command -v shellcheck &> /dev/null; then
-            shellcheck scripts/install-prod-autodeploy.sh
-          fi
+      - name: Lint shell scripts
+        run: shellcheck scripts/install-prod-autodeploy.sh
 
   deploy-worker:
     needs: test
