@@ -1,4 +1,0 @@
-services:
-  pc-api:
-    image: my-image:latest
-    build: !reset null

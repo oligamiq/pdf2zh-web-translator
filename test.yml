@@ -1,4 +1,0 @@
-services:
-  pc-api:
-    build:
-      context: .
