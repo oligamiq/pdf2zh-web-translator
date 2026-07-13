@@ -91,7 +91,7 @@ done
 # 7. Verify and Finalize
 if [ "$HEALTHY" = true ]; then
   sleep 2
-  GIT_SHA=$(docker exec "$CONTAINER_ID" python -c "import json, urllib.request; print(json.load(urllib.request.urlopen('http://127.0.0.1:8080/internal/healthz', timeout=3)).get('git_sha', ''))" || echo "")
+  GIT_SHA=$(docker exec "$CONTAINER_ID" python -c "import json, urllib.request; print(json.load(urllib.request.urlopen('http://127.0.0.1:8081/internal/healthz', timeout=3)).get('git_sha', ''))" || echo "")
   echo "✅ pc-api is healthy! git_sha: $GIT_SHA"
   echo ""
   echo "installation completed"

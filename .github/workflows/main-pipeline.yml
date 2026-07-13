@@ -11,17 +11,37 @@ permissions:
   issues: write
   actions: read
 
+concurrency:
+  group: production-main-pipeline
+  cancel-in-progress: false
+
 jobs:
   test:
     runs-on: ubuntu-latest
-    concurrency:
-      group: test-${{ github.ref }}
-      cancel-in-progress: true
+
     steps:
       - uses: actions/checkout@v4
-      - run: python3 -m compileall pc-api-python
-      - run: |
-          cat << 'EOF' > .env
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Check Python syntax
+        run: python3 -m compileall pc-api-python
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci
+
+      - name: Build Worker
+        working-directory: worker
+        run: npm run build
+
+      - name: Create dummy Compose environment
+        run: |
+          cat <<'EOF' > .env
           CLOUDFLARE_TUNNEL_TOKEN=dummy
           WORKER_API_BASE_URL=http://dummy
           HDD_BASE=/dummy
@@ -31,72 +51,123 @@ jobs:
           PDF2ZH_DEFAULT_MODEL=dummy
           PDF2ZH_DEFAULT_API_KEY=dummy
           EOF
-          docker compose -f docker-compose.yml config > /dev/null
-      - run: |
-          docker compose -f docker-compose.yml -f docker-compose.autodeploy.yml config --format json > /tmp/pdftr-compose-effective.json
-      - run: |
-          BUILD_VAL=$(jq -r '.services["pc-api"].build // empty' /tmp/pdftr-compose-effective.json)
-          if [ -n "$BUILD_VAL" ] && [ "$BUILD_VAL" != "null" ]; then
-            echo "❌ Error: build instruction is present in autodeploy effective configuration"
-            exit 1
-          fi
-          
-          IMAGE_VAL=$(jq -r '.services["pc-api"].image' /tmp/pdftr-compose-effective.json)
-          if [ "$IMAGE_VAL" != "ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:production" ]; then
-            echo "❌ Error: GHCR image is not set correctly: $IMAGE_VAL"
-            exit 1
-          fi
-          
-          LABEL_VAL=$(jq -r '.services["pc-api"].labels["com.centurylinklabs.watchtower.enable"]' /tmp/pdftr-compose-effective.json)
-          if [ "$LABEL_VAL" != "true" ]; then
-            echo "❌ Error: Watchtower label not found or not true for pc-api: $LABEL_VAL"
-            exit 1
-          fi
-          
-          echo "✅ Config validation passed!"
-      - name: actionlint
+
+      - name: Validate base Compose
+        run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Generate autodeploy effective configuration
         run: |
-          curl -sL https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz | tar xz actionlint
-          ./actionlint
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.autodeploy.yml \
+            config \
+            --format json \
+            > /tmp/pdftr-compose-effective.json
+
+      - name: Validate autodeploy configuration
+        run: |
+          set -euo pipefail
+
+          build_value="$(
+            jq -r \
+              '.services["pc-api"].build // empty' \
+              /tmp/pdftr-compose-effective.json
+          )"
+
+          if [ -n "$build_value" ] &&
+             [ "$build_value" != "null" ]; then
+            echo "::error::build is present in the autodeploy pc-api configuration"
+            exit 1
+          fi
+
+          image_value="$(
+            jq -r \
+              '.services["pc-api"].image' \
+              /tmp/pdftr-compose-effective.json
+          )"
+
+          if [ "$image_value" != \
+            "ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:production" ]; then
+            echo "::error::Unexpected pc-api image: $image_value"
+            exit 1
+          fi
+
+          label_value="$(
+            jq -r \
+              '.services["pc-api"].labels["com.centurylinklabs.watchtower.enable"]' \
+              /tmp/pdftr-compose-effective.json
+          )"
+
+          if [ "$label_value" != "true" ]; then
+            echo "::error::Watchtower label is missing"
+            exit 1
+          fi
+
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz" |
+            tar -xz actionlint
+
+      - name: Run actionlint
+        run: ./actionlint
+
       - name: Lint shell scripts
         run: shellcheck scripts/install-prod-autodeploy.sh
-      - name: Test backend container startup
+
+      - name: Test Backend container startup
         run: |
+          set -euo pipefail
+
           docker build \
             --build-arg GIT_SHA="$GITHUB_SHA" \
             -t pc-api-ci \
             ./pc-api-python
-          
-          docker run -d \
+
+          docker run \
+            -d \
             --name pc-api-ci \
             -e PC_AGENT_AUTOSTART=false \
             pc-api-ci
-          
+
           for _ in $(seq 1 30); do
             if docker exec pc-api-ci python -c '
           import json
           import urllib.request
-          
+
           data = json.load(
               urllib.request.urlopen(
                   "http://127.0.0.1:8081/internal/healthz",
                   timeout=3,
               )
           )
-          
+
           assert data["status"] == "ok"
           assert data["git_sha"] != "unknown"
           '; then
               exit 0
             fi
+
             sleep 2
           done
-          
+
           docker logs pc-api-ci
           exit 1
-      - name: Cleanup test container
+
+      - name: Cleanup Backend test container
         if: always()
         run: docker rm -f pc-api-ci || true
+
+  deploy-worker:
+    needs: test
+    uses: ./.github/workflows/deploy-worker.yml
+    secrets: inherit
 
   backend-image:
     needs: test
@@ -104,7 +175,9 @@ jobs:
     secrets: inherit
 
   deploy-backend:
-    needs: backend-image
+    needs:
+      - deploy-worker
+      - backend-image
     uses: ./.github/workflows/deploy-backend.yml
     with:
       image_ref: ${{ needs.backend-image.outputs.image_ref }}
@@ -118,51 +191,191 @@ jobs:
     secrets: inherit
 
   finalize:
-    needs: [smoke, backend-image]
+    needs:
+      - smoke
+      - backend-image
     runs-on: ubuntu-latest
+
     steps:
-      - name: Tag stable
+      - name: Install crane
         run: |
-          curl -sL "https://github.com/google/go-containerregistry/releases/download/v0.19.1/go-containerregistry_Linux_x86_64.tar.gz" | tar -zxvf - crane
-          ./crane auth login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-          # The image is verified healthy and passed smoke tests, so we tag it as stable
-          ./crane tag ${{ needs.backend-image.outputs.image_ref }}@${{ needs.backend-image.outputs.image_digest }} stable
+          set -euo pipefail
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            "https://github.com/google/go-containerregistry/releases/download/v0.19.1/go-containerregistry_Linux_x86_64.tar.gz" |
+            tar -xz crane
+
+      - name: Authenticate to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          ./crane auth login \
+            ghcr.io \
+            -u "${{ github.actor }}" \
+            -p "$GHCR_TOKEN"
+
+      - name: Tag verified image as stable
+        run: |
+          set -euo pipefail
+
+          ./crane tag \
+            "${{ needs.backend-image.outputs.image_ref }}@${{ needs.backend-image.outputs.image_digest }}" \
+            stable
 
   rollback:
-    if: failure() || cancelled()
-    needs: [deploy-backend, smoke, backend-image]
+    if: >-
+      ${{
+        always() &&
+        needs.backend-image.result == 'success' &&
+        (
+          needs.deploy-backend.result == 'failure' ||
+          needs.deploy-backend.result == 'cancelled' ||
+          needs.smoke.result == 'failure' ||
+          needs.smoke.result == 'cancelled'
+        )
+      }}
+
+    needs:
+      - deploy-backend
+      - smoke
+      - backend-image
+
     runs-on: ubuntu-latest
+
+    env:
+      GH_REPO: ${{ github.repository }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     steps:
-      - name: Check main SHA
+      - name: Check whether this is the latest main commit
+        id: latest
         run: |
-          LATEST_SHA=$(git ls-remote https://github.com/${{ github.repository }}.git refs/heads/main | cut -f1)
-          if [ "$LATEST_SHA" != "${{ github.sha }}" ]; then
-            echo "Skipping rollback since this run is not the latest commit on main."
-            exit 0
-          fi
-          
-          curl -sL "https://github.com/google/go-containerregistry/releases/download/v0.19.1/go-containerregistry_Linux_x86_64.tar.gz" | tar -zxvf - crane
-          ./crane auth login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-          
-          echo "Rolling back production to stable tag..."
-          ./crane tag ghcr.io/${{ github.repository }}/pc-api:stable production || true
-          
-          ISSUE_TITLE="prod-smoke failure"
-          BODY="## 🚨 Deployment Rollback
-          
-          A deployment failure occurred and a rollback was initiated.
-          
-          - **Failed Git SHA**: \`${{ github.sha }}\`
-          - **Failed Image Digest**: \`${{ needs.backend-image.outputs.image_digest }}\`
-          - **Rollback Result**: \`stable\` tag restored to \`production\`. Watchtower will restore it shortly.
-          
-          Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          
-          ISSUE_NUMBER=$(gh issue list --search "in:title \"$ISSUE_TITLE\" state:open" --json number --jq '.[0].number' || echo "")
-          if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
-            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          set -euo pipefail
+
+          latest_sha="$(
+            git ls-remote \
+              "https://github.com/${{ github.repository }}.git" \
+              refs/heads/main |
+              cut -f1
+          )"
+
+          if [ "$latest_sha" = "${{ github.sha }}" ]; then
+            echo "should_rollback=true" >> "$GITHUB_OUTPUT"
           else
-            gh issue create --title "$ISSUE_TITLE" --body "$BODY"
+            echo "This run has been superseded by a newer main commit."
+            echo "should_rollback=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Install crane
+        if: steps.latest.outputs.should_rollback == 'true'
+        run: |
+          set -euo pipefail
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            "https://github.com/google/go-containerregistry/releases/download/v0.19.1/go-containerregistry_Linux_x86_64.tar.gz" |
+            tar -xz crane
+
+      - name: Authenticate to GHCR
+        if: steps.latest.outputs.should_rollback == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          ./crane auth login \
+            ghcr.io \
+            -u "${{ github.actor }}" \
+            -p "$GHCR_TOKEN"
+
+      - name: Restore stable image when available
+        if: steps.latest.outputs.should_rollback == 'true'
+        id: restore
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+
+          image="ghcr.io/${{ github.repository }}/pc-api"
+
+          if stable_digest="$(
+            ./crane digest "$image:stable" 2>/dev/null
+          )"; then
+            if ./crane tag "$image@$stable_digest" production; then
+              echo "result=stable restored to production" \
+                >> "$GITHUB_OUTPUT"
+            else
+              echo "result=stable exists but restoration failed" \
+                >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+          else
+            echo "No stable tag exists yet."
+            echo "result=stable unavailable; production unchanged" \
+              >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update deployment failure Issue
+        if: >-
+          ${{
+            always() &&
+            steps.latest.outputs.should_rollback == 'true'
+          }}
+        run: |
+          set -euo pipefail
+
+          issue_title="prod-smoke failure"
+          rollback_result="${{ steps.restore.outputs.result }}"
+
+          if [ -z "$rollback_result" ]; then
+            rollback_result="rollback result unavailable"
+          fi
+
+          body="$(cat <<EOF
+          ## Deployment failure
+
+          A production deployment or smoke test failed.
+
+          - Failed Git SHA: \`${{ github.sha }}\`
+          - Failed image digest: \`${{ needs.backend-image.outputs.image_digest }}\`
+          - Rollback result: \`$rollback_result\`
+          - Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EOF
+          )"
+
+          issue_number="$(
+            gh issue list \
+              --repo "$GH_REPO" \
+              --state open \
+              --search "in:title \"$issue_title\"" \
+              --json number,title \
+              --jq \
+                '.[] | select(.title == "prod-smoke failure") | .number' |
+              head -n 1
+          )"
+
+          if [ -n "$issue_number" ]; then
+            gh issue comment \
+              "$issue_number" \
+              --repo "$GH_REPO" \
+              --body "$body"
+          else
+            gh issue create \
+              --repo "$GH_REPO" \
+              --title "$issue_title" \
+              --body "$body"
+          fi
+
+      - name: Fail when stable restoration failed
+        if: steps.restore.outcome == 'failure'
+        run: |
+          echo "::error::The stable image existed but could not be restored."
+          exit 1

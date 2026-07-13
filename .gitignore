@@ -54,3 +54,6 @@ actionlint
 gitleaks
 gitleaks_*.tar.gz
 gh_*
+__pycache__/
+*.py[cod]
+crane

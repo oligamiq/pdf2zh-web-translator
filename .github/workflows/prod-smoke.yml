@@ -11,11 +11,19 @@ permissions:
   actions: read
   issues: write
 
+concurrency:
+  group: production-smoke
+  cancel-in-progress: false
+
 jobs:
   smoke-siliconflow:
     name: SiliconFlow Connectivity
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+
+    env:
+      GH_REPO: ${{ github.repository }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -23,75 +31,142 @@ jobs:
         with:
           node-version: 24
 
-      - name: Check Token
+      - name: Check smoke token
+        env:
+          PROD_SMOKE_TOKEN: ${{ secrets.PROD_SMOKE_TOKEN }}
         run: |
-          if [ -z "${{ secrets.PROD_SMOKE_TOKEN }}" ]; then
-            echo "## ❌ Error: PROD_SMOKE_TOKEN is missing" >> "$GITHUB_STEP_SUMMARY"
-            echo "missing_smoke_token" >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$PROD_SMOKE_TOKEN" ]; then
+            echo "::error::PROD_SMOKE_TOKEN is missing"
             exit 1
           fi
 
       - name: Run SiliconFlow smoke test
         id: smoke
-        run: |
-          set -o pipefail
-          npm run smoke:prod-siliconflow 2>&1 | tee prod-smoke.log
         env:
           PROD_SMOKE_TOKEN: ${{ secrets.PROD_SMOKE_TOKEN }}
           PROD_WORKER_URL: https://pdftr.oligami.workers.dev
           EXPECTED_GIT_SHA: ${{ github.sha }}
-
-      - name: Sanitize Smoke Log
-        if: always()
         run: |
-          if [ -f prod-smoke.log ]; then
-            sed -E -e 's/receipt=[^&\s"'"'"']+/receipt=***MASKED***/g' \
-                   -e 's/view_token=[^&\s"'"'"']+/view_token=***MASKED***/g' \
-                   -e 's/X-Smoke-Token: [^\s"'"'"']+/X-Smoke-Token: ***MASKED***/gi' \
-                   -e 's/Authorization: Bearer [^\s"'"'"']+/Authorization: Bearer ***MASKED***/gi' \
-                   -e 's/sk-[a-zA-Z0-9_]+/sk-***MASKED***/g' \
-                   prod-smoke.log > prod-smoke.sanitized.log
-            rm prod-smoke.log
+          set +e
+
+          env -u GITHUB_STEP_SUMMARY \
+            npm run smoke:prod-siliconflow \
+            > /tmp/prod-smoke.raw.log \
+            2>&1
+
+          smoke_status=$?
+          set -e
+
+          failure_code="$(
+            grep -Eo \
+              '\[(missing_smoke_token|backend_health_failed|d1_timeout|smoke_job_create_failed|job_timeout|pdf_parse_no_paragraphs|babeldoc_parse_failed|pdf2zh_siliconflowfree_failed|job_failed|route_assert_failed|pdf_download_failed|unknown)\]' \
+              /tmp/prod-smoke.raw.log |
+              tail -n 1 |
+              tr -d '[]' ||
+              true
+          )"
+
+          if [ "$smoke_status" -eq 0 ]; then
+            result="passed"
+          else
+            result="failed"
           fi
 
-      - name: Upload Smoke Log
-        uses: actions/upload-artifact@v4
+          {
+            echo "Production smoke result: $result"
+            echo "Git SHA: $EXPECTED_GIT_SHA"
+
+            if [ -n "$failure_code" ]; then
+              echo "Failure code: $failure_code"
+            fi
+
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > prod-smoke.sanitized.log
+
+          cat prod-smoke.sanitized.log
+
+          {
+            echo "## Production Smoke Test"
+            echo
+            cat prod-smoke.sanitized.log
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          rm -f \
+            /tmp/prod-smoke.raw.log \
+            smoke-summary.md
+
+          exit "$smoke_status"
+
+      - name: Upload sanitized smoke result
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: prod-smoke-log
           path: prod-smoke.sanitized.log
           retention-days: 7
+          if-no-files-found: error
 
-      - name: Handle Failure (Create/Update Issue)
+      - name: Create or update failure Issue
         if: failure()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ISSUE_TITLE="prod-smoke failure"
-          BODY="Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          if [ -f "smoke-summary.md" ]; then
-            BODY="$(cat smoke-summary.md)
-            
-          Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          fi
-          
-          ISSUE_NUMBER=$(gh issue list --search "in:title \"$ISSUE_TITLE\" state:open" --json number --jq '.[0].number')
-          if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
-            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          set -euo pipefail
+
+          issue_title="prod-smoke failure"
+
+          if [ -f prod-smoke.sanitized.log ]; then
+            body="$(cat prod-smoke.sanitized.log)"
           else
-            gh issue create --title "$ISSUE_TITLE" --body "$BODY"
+            body="Production smoke failed. No sanitized result was generated."
           fi
 
-      - name: Handle Success (Close Issue)
+          issue_number="$(
+            gh issue list \
+              --repo "$GH_REPO" \
+              --state open \
+              --search "in:title \"$issue_title\"" \
+              --json number,title \
+              --jq \
+                '.[] | select(.title == "prod-smoke failure") | .number' |
+              head -n 1
+          )"
+
+          if [ -n "$issue_number" ]; then
+            gh issue comment \
+              "$issue_number" \
+              --repo "$GH_REPO" \
+              --body "$body"
+          else
+            gh issue create \
+              --repo "$GH_REPO" \
+              --title "$issue_title" \
+              --body "$body"
+          fi
+
+      - name: Close failure Issue after success
         if: success()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ISSUE_TITLE="prod-smoke failure"
-          ISSUE_NUMBER=$(gh issue list --search "in:title \"$ISSUE_TITLE\" state:open" --json number --jq '.[0].number')
-          if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
-            gh issue comment "$ISSUE_NUMBER" --body "Smoke test succeeded! 🎉
-          
-          Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            gh issue close "$ISSUE_NUMBER" --reason completed
+          set -euo pipefail
+
+          issue_number="$(
+            gh issue list \
+              --repo "$GH_REPO" \
+              --state open \
+              --search 'in:title "prod-smoke failure"' \
+              --json number,title \
+              --jq \
+                '.[] | select(.title == "prod-smoke failure") | .number' |
+              head -n 1
+          )"
+
+          if [ -n "$issue_number" ]; then
+            gh issue close \
+              "$issue_number" \
+              --repo "$GH_REPO" \
+              --reason completed \
+              --comment \
+                "Production smoke passed for commit ${{ github.sha }}."
           fi

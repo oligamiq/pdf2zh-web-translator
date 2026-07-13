@@ -1,4 +1,5 @@
 name: Deploy Backend
+
 on:
   workflow_call:
     inputs:
@@ -12,43 +13,100 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: production-backend-deploy
+  cancel-in-progress: false
+
 jobs:
-  wait-and-rollback:
+  wait-for-deployment:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
     steps:
-      - name: Deploy to production (Tag production)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install crane
         run: |
-          curl -sL "https://github.com/google/go-containerregistry/releases/download/v0.19.1/go-containerregistry_Linux_x86_64.tar.gz" | tar -zxvf - crane
-          ./crane auth login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-          # Tag the immutable digest as production
-          ./crane tag ${{ inputs.image_ref }}@${{ inputs.image_digest }} production
+          set -euo pipefail
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            "https://github.com/google/go-containerregistry/releases/download/v0.19.1/go-containerregistry_Linux_x86_64.tar.gz" |
+            tar -xz crane
+
+      - name: Authenticate to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          ./crane auth login \
+            ghcr.io \
+            -u "${{ github.actor }}" \
+            -p "$GHCR_TOKEN"
+
+      - name: Tag candidate as production
+        run: |
+          set -euo pipefail
+
+          ./crane tag \
+            "${{ inputs.image_ref }}@${{ inputs.image_digest }}" \
+            production
 
       - name: Wait for production deployment
-        id: wait
         run: |
-          echo "Waiting for production /health/pc-api to report git_sha: ${{ inputs.git_sha }}..."
-          WORKER_URL="https://pdftr.oligami.workers.dev"
-          MAX_RETRIES=60
-          RETRY_COUNT=0
-          
-          while [ "$RETRY_COUNT" -lt "$MAX_RETRIES" ]; do
-            HEALTH_JSON=$(curl -s "$WORKER_URL/health/pc-api" || echo "{}")
-            REPORTED_SHA=$(echo "$HEALTH_JSON" | jq -r '.git_sha // "unknown"')
-            STATUS=$(echo "$HEALTH_JSON" | jq -r '.status // "unknown"')
-            
-            if [ "$REPORTED_SHA" = "${{ inputs.git_sha }}" ] && [ "$STATUS" = "online" ]; then
-              echo "✅ Production is running the expected version ($REPORTED_SHA) and is online."
+          set -euo pipefail
+
+          worker_url="https://pdftr.oligami.workers.dev"
+          expected_sha="${{ inputs.git_sha }}"
+          max_retries=60
+
+          echo "Waiting for production Backend SHA: $expected_sha"
+
+          for retry_count in $(seq 1 "$max_retries"); do
+            health_json="$(
+              curl \
+                --fail \
+                --silent \
+                --show-error \
+                --max-time 5 \
+                "$worker_url/health/pc-api" \
+                2>/dev/null ||
+                printf '{}'
+            )"
+
+            reported_sha="$(
+              printf '%s' "$health_json" |
+                jq -r '.git_sha // "unknown"' 2>/dev/null ||
+                printf 'unknown'
+            )"
+
+            status="$(
+              printf '%s' "$health_json" |
+                jq -r '.status // "unknown"' 2>/dev/null ||
+                printf 'unknown'
+            )"
+
+            printf \
+              'Attempt %s/%s: git_sha=%s status=%s\n' \
+              "$retry_count" \
+              "$max_retries" \
+              "$reported_sha" \
+              "$status"
+
+            if [ "$reported_sha" = "$expected_sha" ] &&
+               [ "$status" = "online" ]; then
+              echo "Production Backend is running the expected SHA."
               exit 0
             fi
-            
-            echo "Currently running: $REPORTED_SHA, status: $STATUS. Retrying in 10s... ($RETRY_COUNT/$MAX_RETRIES)"
+
             sleep 10
-            RETRY_COUNT=$((RETRY_COUNT + 1))
           done
-          
-          echo "❌ Timed out waiting for deployment or healthcheck failed."
-          echo "HEALTH_JSON=$HEALTH_JSON" >> "$GITHUB_ENV"
+
+          echo "::error::Timed out waiting for the expected production Backend SHA."
           exit 1
