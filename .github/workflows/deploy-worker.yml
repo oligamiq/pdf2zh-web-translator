@@ -16,7 +16,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: d1 migrations apply pdf2zh-web-d1 --remote
+          command: d1 migrations apply pdf2zh-db --remote
           workingDirectory: worker
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
