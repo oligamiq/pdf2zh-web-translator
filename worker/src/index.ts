@@ -1796,19 +1796,67 @@ app.post('/agent/jobs/:id/succeeded', async (c) => {
   const now = new Date()
   const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
   
-  await c.env.DB.prepare(
-    `UPDATE jobs SET status = 'completed', finished_at = ?, download_expires_at = ?, progress_percent = 100, progress_phase = 'completed' WHERE id = ? AND status = 'running'`
-  ).bind(now.toISOString(), expiresAt.toISOString(), id).run()
+  let body = {};
+  try { body = await c.req.json(); } catch(e) {}
+  
+  let executionMetadata = null;
+  if (body.execution_metadata) {
+    try {
+      const meta = typeof body.execution_metadata === 'string' ? JSON.parse(body.execution_metadata) : body.execution_metadata;
+      executionMetadata = JSON.stringify({
+        provider: String(meta.provider || '').substring(0, 50),
+        engine: String(meta.engine || '').substring(0, 50),
+        route: String(meta.route || '').substring(0, 50),
+        router_used: Boolean(meta.router_used),
+        backend_git_sha: String(meta.backend_git_sha || '').substring(0, 50)
+      });
+      if (executionMetadata.length > 1024) executionMetadata = null;
+    } catch(e) { executionMetadata = null; }
+  }
+
+  if (executionMetadata) {
+    await c.env.DB.prepare(
+      `UPDATE jobs SET status = 'completed', finished_at = ?, download_expires_at = ?, progress_percent = 100, progress_phase = 'completed', execution_metadata = COALESCE(?, execution_metadata) WHERE id = ? AND status = 'running'`
+    ).bind(now.toISOString(), expiresAt.toISOString(), executionMetadata, id).run()
+  } else {
+    await c.env.DB.prepare(
+      `UPDATE jobs SET status = 'completed', finished_at = ?, download_expires_at = ?, progress_percent = 100, progress_phase = 'completed' WHERE id = ? AND status = 'running'`
+    ).bind(now.toISOString(), expiresAt.toISOString(), id).run()
+  }
   return c.json({ ok: true })
 })
 
 app.post('/agent/jobs/:id/failed', async (c) => {
   const id = c.req.param('id')
-  const body = await c.req.json()
-  const now = new Date().toISOString()
-  await c.env.DB.prepare(
-    `UPDATE jobs SET status = 'failed', finished_at = ?, error_message = ? WHERE id = ? AND status = 'running'`
-  ).bind(now, body.error || 'Unknown error', id).run()
+  const now = new Date()
+  
+  let body = {};
+  try { body = await c.req.json(); } catch(e) {}
+  
+  let executionMetadata = null;
+  if (body.execution_metadata) {
+    try {
+      const meta = typeof body.execution_metadata === 'string' ? JSON.parse(body.execution_metadata) : body.execution_metadata;
+      executionMetadata = JSON.stringify({
+        provider: String(meta.provider || '').substring(0, 50),
+        engine: String(meta.engine || '').substring(0, 50),
+        route: String(meta.route || '').substring(0, 50),
+        router_used: Boolean(meta.router_used),
+        backend_git_sha: String(meta.backend_git_sha || '').substring(0, 50)
+      });
+      if (executionMetadata.length > 1024) executionMetadata = null;
+    } catch(e) { executionMetadata = null; }
+  }
+
+  if (executionMetadata) {
+    await c.env.DB.prepare(
+      `UPDATE jobs SET status = 'failed', finished_at = ?, error_message = 'Failed to process', progress_phase = 'failed', execution_metadata = COALESCE(?, execution_metadata) WHERE id = ? AND status = 'running'`
+    ).bind(now.toISOString(), executionMetadata, id).run()
+  } else {
+    await c.env.DB.prepare(
+      `UPDATE jobs SET status = 'failed', finished_at = ?, error_message = 'Failed to process', progress_phase = 'failed' WHERE id = ? AND status = 'running'`
+    ).bind(now.toISOString(), id).run()
+  }
   return c.json({ ok: true })
 })
 

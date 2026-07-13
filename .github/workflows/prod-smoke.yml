@@ -39,13 +39,27 @@ jobs:
         env:
           PROD_SMOKE_TOKEN: ${{ secrets.PROD_SMOKE_TOKEN }}
           PROD_WORKER_URL: https://pdftr.oligami.workers.dev
+          EXPECTED_GIT_SHA: ${{ github.sha }}
+
+      - name: Sanitize Smoke Log
+        if: always()
+        run: |
+          if [ -f prod-smoke.log ]; then
+            sed -E -e 's/receipt=[^&\s"'"'"']+/receipt=***MASKED***/g' \
+                   -e 's/view_token=[^&\s"'"'"']+/view_token=***MASKED***/g' \
+                   -e 's/X-Smoke-Token: [^\s"'"'"']+/X-Smoke-Token: ***MASKED***/gi' \
+                   -e 's/Authorization: Bearer [^\s"'"'"']+/Authorization: Bearer ***MASKED***/gi' \
+                   -e 's/sk-[a-zA-Z0-9_]+/sk-***MASKED***/g' \
+                   prod-smoke.log > prod-smoke.sanitized.log
+            rm prod-smoke.log
+          fi
 
       - name: Upload Smoke Log
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: prod-smoke-log
-          path: prod-smoke.log
+          path: prod-smoke.sanitized.log
           retention-days: 7
 
       - name: Handle Failure (Create/Update Issue)

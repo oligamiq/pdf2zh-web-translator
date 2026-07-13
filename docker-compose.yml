@@ -1,7 +1,5 @@
 services:
   pc-api:
-    build:
-      context: ./pc-api-python
     env_file:
       - .env
     environment:
@@ -30,6 +28,12 @@ services:
     ports:
       - "127.0.0.1:8789:8080"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/internal/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 30s
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -42,5 +46,4 @@ services:
 
 networks:
   internal-net:
-    # No external access needed except outgoing for cloudflared
     driver: bridge

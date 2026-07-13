@@ -3,6 +3,7 @@ set -euo pipefail
 
 echo "Deploying Production Auto-deploy Environment..."
 
+# 1. Environment Checks
 if ! command -v docker &> /dev/null; then
     echo "❌ docker not found"
     exit 1
@@ -13,8 +14,13 @@ if ! docker compose version &> /dev/null; then
     exit 1
 fi
 
-IMAGE="ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:latest"
+if [ ! -f docker-compose.yml ]; then
+    echo "❌ docker-compose.yml not found in the current directory."
+    exit 1
+fi
 
+# 2. GHCR Pull Check
+IMAGE="ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:stable"
 echo "Checking GHCR access..."
 if ! docker pull $IMAGE; then
     echo "⚠️ Failed to pull $IMAGE."
@@ -23,22 +29,21 @@ if ! docker pull $IMAGE; then
     exit 1
 fi
 
+# 3. Backup Configuration
 echo "Backing up docker-compose.yml..."
 cp docker-compose.yml docker-compose.yml.bak
 
+# Modify docker-compose.yml to remove 'build:' for pc-api
+sed -i '/build:/,/context: \.\/pc-api-python/d' docker-compose.yml
+
+# 4. Generate Override
 echo "Creating docker-compose.autodeploy.yml override..."
 cat << 'EOF' > docker-compose.autodeploy.yml
 services:
   pc-api:
-    image: ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:latest
+    image: ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:production
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/internal/healthz"]
-      interval: 15s
-      timeout: 5s
-      retries: 4
-      start_period: 30s
 
   watchtower:
     image: containrrr/watchtower
@@ -52,20 +57,45 @@ services:
     restart: unless-stopped
 EOF
 
+# 5. Validate Effective Configuration
+echo "Validating effective Compose configuration..."
+docker compose -f docker-compose.yml -f docker-compose.autodeploy.yml config > /tmp/pdftr-compose-effective.yml
+
+if grep -q "build:" /tmp/pdftr-compose-effective.yml; then
+    echo "❌ Error: 'build:' instruction is still present in the effective configuration."
+    mv docker-compose.yml.bak docker-compose.yml
+    rm -f docker-compose.autodeploy.yml
+    exit 1
+fi
+
+if ! grep -q "image: ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:production" /tmp/pdftr-compose-effective.yml; then
+    echo "❌ Error: GHCR image is not set for pc-api in effective configuration."
+    mv docker-compose.yml.bak docker-compose.yml
+    rm -f docker-compose.autodeploy.yml
+    exit 1
+fi
+
+# 6. Capture Previous State for Rollback
 PREV_DIGEST=""
 if docker compose ps -q pc-api &>/dev/null; then
   PREV_IMAGE=$(docker inspect --format='{{.Config.Image}}' $(docker compose ps -q pc-api))
   PREV_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $PREV_IMAGE 2>/dev/null || echo "")
 fi
 
+# Initialize production tag with stable to safely start
+docker tag ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:stable ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:production
+
+# 7. Start Deployment
 echo "Starting deployment..."
 if ! docker compose -f docker-compose.yml -f docker-compose.autodeploy.yml up -d pc-api watchtower; then
     echo "❌ Deployment failed."
     rm -f docker-compose.autodeploy.yml
+    mv docker-compose.yml.bak docker-compose.yml
     docker compose up -d pc-api
     exit 1
 fi
 
+# 8. Health Check Wait
 echo "Waiting for health check..."
 CONTAINER_ID=$(docker compose -f docker-compose.yml -f docker-compose.autodeploy.yml ps -q pc-api)
 
@@ -80,14 +110,19 @@ for i in {1..12}; do
   sleep 5
 done
 
+# 9. Verify and Finalize
 if [ "$HEALTHY" = true ]; then
   sleep 2
   GIT_SHA=$(docker exec $CONTAINER_ID curl -s http://localhost:8080/internal/healthz | grep -o '"git_sha":"[^"]*"' | cut -d'"' -f4 || echo "")
   echo "✅ pc-api is healthy! git_sha: $GIT_SHA"
-  echo "🎉 installation completed"
+  echo ""
+  echo "installation completed"
+  echo "automatic deployment enabled"
+  echo "no further manual deployment is required"
 else
   echo "❌ pc-api failed to become healthy. Rolling back..."
   rm -f docker-compose.autodeploy.yml
+  mv docker-compose.yml.bak docker-compose.yml
   docker compose up -d pc-api
   if [ -n "$PREV_DIGEST" ]; then
     echo "Restored previous deployment."

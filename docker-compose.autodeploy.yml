@@ -1,0 +1,16 @@
+services:
+  pc-api:
+    image: ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:production
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      - --label-enable
+      - --cleanup
+      - --interval
+      - "60"
+    restart: unless-stopped

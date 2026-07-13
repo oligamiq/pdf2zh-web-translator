@@ -209,6 +209,11 @@ async function main() {
     engine: 'SiliconFlowFree'
   };
   
+  const expectedSha = process.env.EXPECTED_GIT_SHA || '';
+  if (expectedSha) {
+    requiredMetadata.backend_git_sha = expectedSha;
+  }
+  
   const missingLogs = [];
   for (const [key, value] of Object.entries(requiredMetadata)) {
     if (metadata[key] !== value) {

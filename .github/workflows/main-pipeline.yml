@@ -5,13 +5,12 @@ on:
     branches:
       - main
 
-concurrency:
-  group: production-deploy-main
-  cancel-in-progress: true
-
 jobs:
   test:
     runs-on: ubuntu-latest
+    concurrency:
+      group: test-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m compileall pc-api-python
@@ -29,11 +28,57 @@ jobs:
   deploy-backend:
     needs: backend-image
     uses: ./.github/workflows/deploy-backend.yml
-    with:
-      previous_digest: ${{ needs.backend-image.outputs.previous_digest }}
     secrets: inherit
 
   smoke:
     needs: deploy-backend
     uses: ./.github/workflows/prod-smoke.yml
     secrets: inherit
+
+  finalize:
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tag stable
+        run: |
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/v0.19.1/go-containerregistry_Linux_x86_64.tar.gz" | tar -zxvf - crane
+          ./crane auth login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+          ./crane tag ghcr.io/${{ github.repository }}/pc-api:${{ github.sha }} stable
+
+  rollback:
+    if: failure() || cancelled()
+    needs: [deploy-backend, smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check main SHA
+        run: |
+          LATEST_SHA=$(git ls-remote https://github.com/${{ github.repository }}.git refs/heads/main | cut -f1)
+          if [ "$LATEST_SHA" != "${{ github.sha }}" ]; then
+            echo "Skipping rollback since this run is not the latest commit on main."
+            exit 0
+          fi
+          
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/v0.19.1/go-containerregistry_Linux_x86_64.tar.gz" | tar -zxvf - crane
+          ./crane auth login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+          
+          echo "Rolling back production to stable tag..."
+          ./crane tag ghcr.io/${{ github.repository }}/pc-api:stable production || true
+          
+          ISSUE_TITLE="prod-smoke failure"
+          BODY="## 🚨 Deployment Rollback
+          
+          A deployment failure occurred and a rollback was initiated.
+          
+          - **Failed Git SHA**: \`${{ github.sha }}\`
+          - **Rollback Result**: \`stable\` tag restored to \`production\`. Watchtower will restore it shortly.
+          
+          Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          ISSUE_NUMBER=$(gh issue list --search "in:title \"$ISSUE_TITLE\" state:open" --json number --jq '.[0].number' || echo "")
+          if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          else
+            gh issue create --title "$ISSUE_TITLE" --body "$BODY"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
