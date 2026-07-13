@@ -21,21 +21,21 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 -m compileall pc-api-python
       - run: docker compose -f docker-compose.yml config > /dev/null
-      - run: docker compose -f docker-compose.yml -f docker-compose.autodeploy.yml config > /tmp/pdftr-compose-effective.yml
+      - run: docker compose -f docker-compose.yml -f docker-compose.autodeploy.yml config --format json > /tmp/pdftr-compose-effective.json
       - run: |
-          BUILD_VAL=$(yq '.services["pc-api"].build' /tmp/pdftr-compose-effective.yml)
+          BUILD_VAL=$(jq -r '.services["pc-api"].build // empty' /tmp/pdftr-compose-effective.json)
           if [ -n "$BUILD_VAL" ] && [ "$BUILD_VAL" != "null" ]; then
             echo "❌ Error: build instruction is present in autodeploy effective configuration"
             exit 1
           fi
           
-          IMAGE_VAL=$(yq '.services["pc-api"].image' /tmp/pdftr-compose-effective.yml)
+          IMAGE_VAL=$(jq -r '.services["pc-api"].image' /tmp/pdftr-compose-effective.json)
           if [ "$IMAGE_VAL" != "ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:production" ]; then
             echo "❌ Error: GHCR image is not set correctly: $IMAGE_VAL"
             exit 1
           fi
           
-          LABEL_VAL=$(yq '.services["pc-api"].labels["com.centurylinklabs.watchtower.enable"]' /tmp/pdftr-compose-effective.yml)
+          LABEL_VAL=$(jq -r '.services["pc-api"].labels["com.centurylinklabs.watchtower.enable"]' /tmp/pdftr-compose-effective.json)
           if [ "$LABEL_VAL" != "true" ]; then
             echo "❌ Error: Watchtower label not found or not true for pc-api: $LABEL_VAL"
             exit 1
