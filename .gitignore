@@ -50,3 +50,7 @@ frontend/playwright-report/
 *_old.py
 fix_*.py
 *.bak
+actionlint
+gitleaks
+gitleaks_*.tar.gz
+gh_*

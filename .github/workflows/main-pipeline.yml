@@ -60,6 +60,43 @@ jobs:
           ./actionlint
       - name: Lint shell scripts
         run: shellcheck scripts/install-prod-autodeploy.sh
+      - name: Test backend container startup
+        run: |
+          docker build \
+            --build-arg GIT_SHA="$GITHUB_SHA" \
+            -t pc-api-ci \
+            ./pc-api-python
+          
+          docker run -d \
+            --name pc-api-ci \
+            -e PC_AGENT_AUTOSTART=false \
+            pc-api-ci
+          
+          for i in $(seq 1 30); do
+            if docker exec pc-api-ci python -c '
+          import json
+          import urllib.request
+          
+          data = json.load(
+              urllib.request.urlopen(
+                  "http://127.0.0.1:8081/internal/healthz",
+                  timeout=3,
+              )
+          )
+          
+          assert data["status"] == "ok"
+          assert data["git_sha"] != "unknown"
+          '; then
+              exit 0
+            fi
+            sleep 2
+          done
+          
+          docker logs pc-api-ci
+          exit 1
+      - name: Cleanup test container
+        if: always()
+        run: docker rm -f pc-api-ci || true
 
   backend-image:
     needs: test

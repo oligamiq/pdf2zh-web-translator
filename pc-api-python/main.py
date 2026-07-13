@@ -479,7 +479,13 @@ async def agent_loop():
                             engine_type_val = translate_engine_settings.get("translate_engine_type")
                             route_val = 'router' if engine_type_val == 'OpenAICompatible' else 'pdf2zh_native'
                             router_used_val = True if engine_type_val == 'OpenAICompatible' else False
-                            execution_metadata = {'provider': engine_info.get('provider_type'), 'engine': engine_type_val, 'route': route_val, 'router_used': router_used_val}
+                            execution_metadata = {
+                                "provider": engine_info.get("provider_type"),
+                                "engine": engine_type_val,
+                                "route": route_val,
+                                "router_used": router_used_val,
+                                "backend_git_sha": os.environ.get("GIT_SHA", "unknown"),
+                            }
                             
                             logger.info(f"Engine info: provider={engine_info.get('provider_type')}, engine={engine_type_val}, route={route_val}")
                             

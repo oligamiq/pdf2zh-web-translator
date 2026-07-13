@@ -28,10 +28,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "127.0.0.1:8789:8080"
+      - "127.0.0.1:8789:8081"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import json, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8080/internal/healthz', timeout=3)); assert data['status'] == 'ok'"]
+      test: ["CMD", "python", "-c", "import json, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8081/internal/healthz', timeout=3)); assert data['status'] == 'ok'"]
       interval: 15s
       timeout: 5s
       retries: 4
