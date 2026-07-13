@@ -20,8 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m compileall pc-api-python
-      - run: docker compose -f docker-compose.yml config > /dev/null
-      - run: docker compose -f docker-compose.yml -f docker-compose.autodeploy.yml config --format json > /tmp/pdftr-compose-effective.json
+      - run: |
+          export CLOUDFLARE_TUNNEL_TOKEN=dummy
+          docker compose -f docker-compose.yml config > /dev/null
+      - run: |
+          export CLOUDFLARE_TUNNEL_TOKEN=dummy
+          docker compose -f docker-compose.yml -f docker-compose.autodeploy.yml config --format json > /tmp/pdftr-compose-effective.json
       - run: |
           BUILD_VAL=$(jq -r '.services["pc-api"].build // empty' /tmp/pdftr-compose-effective.json)
           if [ -n "$BUILD_VAL" ] && [ "$BUILD_VAL" != "null" ]; then
