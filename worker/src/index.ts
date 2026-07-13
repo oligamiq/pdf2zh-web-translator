@@ -1241,7 +1241,7 @@ app.get('/jobs/:id', authMiddleware, async (c) => {
   
   const exp = job.download_expires_at || '';
   const view_token = await hmacSha256Hex(c.env.PDF_VIEW_TOKEN_SECRET || 'secret', `pdf-job:v1:${job.id}:${exp}`)
-  if (job && typeof job.execution_metadata === 'string') { try { job.execution_metadata = JSON.parse(job.execution_metadata); } catch(e) {} }
+  if (job && typeof job.execution_metadata === 'string') { try { job.execution_metadata = JSON.parse(job.execution_metadata); } catch(e) { job.execution_metadata = null; } }
   return c.json({ ...job, view_token })
 })
 
@@ -1342,7 +1342,7 @@ app.get('/public/jobs/:id', async (c) => {
   
   const { job } = await getPublicJobWithLegacyFallback(c.env, id, receipt, 'id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, execution_metadata, active_provider_name')
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
-  if (job && typeof job.execution_metadata === 'string') { try { job.execution_metadata = JSON.parse(job.execution_metadata); } catch(e) {} }
+  if (job && typeof job.execution_metadata === 'string') { try { job.execution_metadata = JSON.parse(job.execution_metadata); } catch(e) { job.execution_metadata = null; } }
   return c.json(job)
 })
 
@@ -1739,7 +1739,25 @@ app.post('/agent/jobs/:id/progress', async (c) => {
   const message = body.progress_message || '';
   const errorMsg = body.error_message || null;
   const logTail = body.log_tail || null;
-  const executionMetadata = body.execution_metadata ? JSON.stringify(body.execution_metadata) : null;
+    let executionMetadata = null;
+  if (body.execution_metadata) {
+    try {
+      const meta = typeof body.execution_metadata === 'string' ? JSON.parse(body.execution_metadata) : body.execution_metadata;
+      
+      const parsed = {
+        provider: String(meta.provider || '').substring(0, 50),
+        engine: String(meta.engine || '').substring(0, 50),
+        route: String(meta.route || '').substring(0, 50),
+        router_used: Boolean(meta.router_used),
+        backend_git_sha: String(meta.backend_git_sha || '').substring(0, 50)
+      };
+      
+      executionMetadata = JSON.stringify(parsed);
+      if (executionMetadata.length > 1024) executionMetadata = null;
+    } catch(e) {
+      executionMetadata = null;
+    }
+  }
   const activeProviderName = body.active_provider_name || null;
 
   const existing = await c.env.DB.prepare(`SELECT progress_percent FROM jobs WHERE id = ?`).bind(id).first();

@@ -1,0 +1,71 @@
+name: Deploy Backend
+on:
+  workflow_call:
+    inputs:
+      previous_digest:
+        required: true
+        type: string
+
+jobs:
+  wait-and-rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Wait for production deployment
+        id: wait
+        run: |
+          echo "Waiting for production /health/pc-api to report git_sha: ${{ github.sha }}..."
+          WORKER_URL="https://pdftr.oligami.workers.dev"
+          MAX_RETRIES=60
+          RETRY_COUNT=0
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            HEALTH_JSON=$(curl -s "$WORKER_URL/health/pc-api" || echo "{}")
+            REPORTED_SHA=$(echo "$HEALTH_JSON" | jq -r '.git_sha // "unknown"')
+            STATUS=$(echo "$HEALTH_JSON" | jq -r '.status // "unknown"')
+            
+            if [ "$REPORTED_SHA" = "${{ github.sha }}" ] && [ "$STATUS" = "online" ]; then
+              echo "✅ Production is running the expected version ($REPORTED_SHA) and is online."
+              exit 0
+            fi
+            
+            echo "Currently running: $REPORTED_SHA, status: $STATUS. Retrying in 10s... ($RETRY_COUNT/$MAX_RETRIES)"
+            sleep 10
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+          done
+          
+          echo "❌ Timed out waiting for deployment or healthcheck failed."
+          echo "HEALTH_JSON=$HEALTH_JSON" >> $GITHUB_ENV
+          exit 1
+
+      - name: Rollback on failure
+        if: failure() && inputs.previous_digest != 'none' && inputs.previous_digest != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Initiating rollback to previous digest: ${{ inputs.previous_digest }}"
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/v0.19.1/go-containerregistry_Linux_x86_64.tar.gz" | tar -zxvf - crane
+          ./crane auth login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+          ./crane tag ghcr.io/${{ github.repository }}/pc-api@${{ inputs.previous_digest }} latest
+          
+          echo "Rollback tag pushed. Watchtower will pull the old image within 60s."
+          
+          ISSUE_TITLE="prod-smoke failure"
+          BODY="## 🚨 Deployment Rollback
+          
+          A deployment failure occurred and a rollback was initiated.
+          
+          - **Failed Git SHA**: \`${{ github.sha }}\`
+          - **Previous Image Digest**: \`${{ inputs.previous_digest }}\`
+          - **Health Failure Summary**: \`${{ env.HEALTH_JSON }}\`
+          - **Rollback Result**: Previous digest re-tagged as \`latest\`. Watchtower will restore it shortly.
+          
+          Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          ISSUE_NUMBER=$(gh issue list --search "in:title \"$ISSUE_TITLE\" state:open" --json number --jq '.[0].number')
+          if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          else
+            gh issue create --title "$ISSUE_TITLE" --body "$BODY"
+          fi
+          exit 1

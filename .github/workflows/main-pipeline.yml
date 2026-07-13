@@ -1,0 +1,39 @@
+name: Main Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: production-deploy-main
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m compileall pc-api-python
+
+  deploy-worker:
+    needs: test
+    uses: ./.github/workflows/deploy-worker.yml
+    secrets: inherit
+
+  backend-image:
+    needs: deploy-worker
+    uses: ./.github/workflows/backend-image.yml
+    secrets: inherit
+
+  deploy-backend:
+    needs: backend-image
+    uses: ./.github/workflows/deploy-backend.yml
+    with:
+      previous_digest: ${{ needs.backend-image.outputs.previous_digest }}
+    secrets: inherit
+
+  smoke:
+    needs: deploy-backend
+    uses: ./.github/workflows/prod-smoke.yml
+    secrets: inherit
