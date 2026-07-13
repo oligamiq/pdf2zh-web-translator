@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m compileall pc-api-python
-      - run: docker compose -f docker-compose.yml -f docker-compose.local.yml config > /dev/null
+      - run: docker compose -f docker-compose.yml config > /dev/null
       - run: docker compose -f docker-compose.yml -f docker-compose.autodeploy.yml config > /tmp/pdftr-compose-effective.yml
       - run: |
           if grep -q "build:" /tmp/pdftr-compose-effective.yml; then
