@@ -459,7 +459,7 @@ async def agent_loop():
                         last_progress_percent = 15
                         
                         from collections import deque
-                    log_tail = deque(maxlen=100)
+                        log_tail = deque(maxlen=100)
 
                         for engine_idx, engine_info in enumerate(engines_to_try):
                             if job_success:
