@@ -444,7 +444,7 @@ async def agent_loop():
                                         "engine_config": {
                                             "translate_engine_type": "OpenAICompatible",
                                             "openai_compatible_model": "router",
-                                            "openai_compatible_base_url": f"{os.environ.get('PC_API_INTERNAL_BASE_URL', 'http://127.0.0.1:8080')}/router/{job_id}/v1",
+                                            "openai_compatible_base_url": f"{os.environ.get('PC_API_INTERNAL_BASE_URL', 'http://127.0.0.1:8081')}/router/{job_id}/v1",
                                             "openai_compatible_api_key": "dummy"
                                         },
                                         "display_name": provider.get("display_name"),
