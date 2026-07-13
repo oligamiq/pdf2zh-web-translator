@@ -197,41 +197,40 @@ async function main() {
   console.log('   ✅ Job completed successfully');
   summary += '- ✅ job completed\n';
   
-  // Verify expected logging in log_tail
-  console.log('   Verifying job logs (provider/engine/routing)...');
+  console.log('   Verifying job execution metadata (provider/engine/routing)...');
   const verifyResp = await fetch(`${WORKER_URL}/public/jobs/${jobId}?receipt=${receipt}`);
   const jobResult = await verifyResp.json();
-  const logTail = jobResult.log_tail || '';
+  const metadata = jobResult.execution_metadata || {};
   
-  const requiredLogs = [
-    { key: 'route: pdf2zh_native', match: 'route: pdf2zh_native' },
-    { key: 'router_used: false', match: 'router_used: false' },
-    { key: 'provider: siliconflow_free', match: 'provider: siliconflow_free' },
-    { key: 'engine: SiliconFlowFree', match: 'engine: SiliconFlowFree' }
-  ];
+  const requiredMetadata = {
+    route: 'pdf2zh_native',
+    router_used: false,
+    provider: 'siliconflow_free',
+    engine: 'SiliconFlowFree'
+  };
   
   const missingLogs = [];
-  for (const expected of requiredLogs) {
-    if (!logTail.includes(expected.match)) {
-      missingLogs.push(expected.key);
+  for (const [key, value] of Object.entries(requiredMetadata)) {
+    if (metadata[key] !== value) {
+      missingLogs.push(`Expected ${key}=${value}, got ${metadata[key]}`);
     }
   }
 
   if (missingLogs.length > 0) {
-    console.error(`   ❌ Verification failed: log_tail missing expected outputs`);
+    console.error(`   ❌ Verification failed: execution_metadata mismatch`);
     missingLogs.forEach(m => console.error(`      - ${m}`));
     
     summary += `\n### ❌ Failed: route_assert_failed\n`;
-    summary += `The following expected log entries were missing from log_tail:\n`;
+    summary += `The following execution_metadata values mismatched:\n`;
     missingLogs.forEach(m => summary += `- \`${m}\`\n`);
-    summary += `\n**Safe Log Tail**:\n\`\`\`\n${cleanLogTail(logTail)}\n\`\`\`\n`;
+    summary += `\n**Safe Log Tail**:\n\`\`\`\n${cleanLogTail(jobResult.log_tail || '')}\n\`\`\`\n`;
     summary += `\nNext action: Verify pc-api-python route logging logic.`;
     writeSummary(summary);
     process.exit(1);
   }
   
-  console.log('      ✅ Log verification passed');
-  summary += '- ✅ log_tail route assert ok\n';
+  console.log('      ✅ Execution metadata verification passed');
+  summary += '- ✅ execution_metadata route assert ok\n';
 
   // Verify downloads
   console.log('   Verifying downloads...');

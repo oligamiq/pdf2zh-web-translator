@@ -3,7 +3,6 @@ name: Production Smoke Test
 on:
   workflow_dispatch:
   schedule:
-    # Run daily at 09:00 UTC (18:00 JST)
     - cron: '0 9 * * *'
   push:
     branches:
@@ -16,14 +15,52 @@ on:
 
 permissions:
   contents: read
+  packages: write
   actions: read
   issues: write
 
 jobs:
+  build-and-push:
+    name: Build & Push pc-api
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python Syntax Check
+        run: python3 -m compileall pc-api-python
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/pc-api
+          tags: |
+            type=raw,value=latest
+            type=sha,format=long
+
+      - name: Build and Push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./pc-api-python
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            APP_VERSION=${{ github.ref_name }}
+
   smoke-siliconflow:
     name: SiliconFlow Connectivity
+    needs: build-and-push
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -38,6 +75,30 @@ jobs:
             echo "missing_smoke_token" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
+
+      - name: Wait for production deployment
+        run: |
+          echo "Waiting for production /health/pc-api to report git_sha: ${{ github.sha }}..."
+          WORKER_URL="https://pdftr.oligami.workers.dev"
+          MAX_RETRIES=60
+          RETRY_COUNT=0
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            HEALTH_JSON=$(curl -s "$WORKER_URL/health/pc-api" || echo "{}")
+            REPORTED_SHA=$(echo "$HEALTH_JSON" | jq -r '.git_sha // "unknown"')
+            
+            if [ "$REPORTED_SHA" = "${{ github.sha }}" ]; then
+              echo "✅ Production is running the expected version ($REPORTED_SHA)."
+              exit 0
+            fi
+            
+            echo "Currently running: $REPORTED_SHA. Retrying in 10s... ($RETRY_COUNT/$MAX_RETRIES)"
+            sleep 10
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+          done
+          
+          echo "❌ Timed out waiting for deployment."
+          exit 1
 
       - name: Run SiliconFlow smoke test
         id: smoke
@@ -62,19 +123,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ISSUE_TITLE="prod-smoke failure"
-          
-          # Read smoke-summary.md carefully
           BODY="Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           if [ -f "smoke-summary.md" ]; then
-            BODY=$(cat smoke-summary.md)
-            BODY="${BODY}
-          
+            BODY="$(cat smoke-summary.md)
+
           Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           fi
           
-          # Check if issue exists
           ISSUE_NUMBER=$(gh issue list --search "in:title \"$ISSUE_TITLE\" state:open" --json number --jq '.[0].number')
-          
           if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
             gh issue comment "$ISSUE_NUMBER" --body "$BODY"
           else
@@ -88,7 +144,6 @@ jobs:
         run: |
           ISSUE_TITLE="prod-smoke failure"
           ISSUE_NUMBER=$(gh issue list --search "in:title \"$ISSUE_TITLE\" state:open" --json number --jq '.[0].number')
-          
           if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
             gh issue comment "$ISSUE_NUMBER" --body "Smoke test succeeded! 🎉
           

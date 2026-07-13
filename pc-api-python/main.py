@@ -60,7 +60,12 @@ async def verify_secret(request: Request, call_next):
 
 @app.get("/internal/healthz")
 async def healthz():
-    return Response("OK", status_code=200)
+    return JSONResponse({
+        "status": "ok",
+        "git_sha": os.environ.get("GIT_SHA", "unknown"),
+        "image_digest": os.environ.get("IMAGE_DIGEST", "unknown"),
+        "version": os.environ.get("APP_VERSION", "unknown")
+    }, status_code=200)
 
 @app.post("/internal/wake")
 async def wake_agent():
@@ -262,15 +267,18 @@ async def agent_loop():
                     logger.info(f"Claimed job: {job_id}")
                 
                     error = None
-                    log_tail = []
+                    from collections import deque
+                        log_tail = deque(maxlen=100)
                 
-                    async def report_progress(percent, phase, message, status="running", error_msg=None, active_provider_name=None, **kwargs):
+                    async def report_progress(percent, phase, message, status="running", error_msg=None, active_provider_name=None, execution_metadata=None, **kwargs):
                         payload = {
                             "status": status,
                             "progress_percent": percent,
                             "progress_phase": phase,
                             "progress_message": message
                         }
+                        if execution_metadata:
+                            payload["execution_metadata"] = execution_metadata
                         if active_provider_name:
                             payload["active_provider_name"] = active_provider_name
                         if error_msg:
@@ -450,7 +458,8 @@ async def agent_loop():
                         last_progress_time = asyncio.get_event_loop().time()
                         last_progress_percent = 15
                         
-                        log_tail = []
+                        from collections import deque
+                        log_tail = deque(maxlen=100)
 
                         for engine_idx, engine_info in enumerate(engines_to_try):
                             if job_success:
@@ -469,17 +478,12 @@ async def agent_loop():
                             
                             engine_type_val = translate_engine_settings.get("translate_engine_type")
                             route_val = 'router' if engine_type_val == 'OpenAICompatible' else 'pdf2zh_native'
-                            router_used_val = 'true' if engine_type_val == 'OpenAICompatible' else 'false'
+                            router_used_val = True if engine_type_val == 'OpenAICompatible' else False
+                            execution_metadata = {'provider': engine_info.get('provider_type'), 'engine': engine_type_val, 'route': route_val, 'router_used': router_used_val}
                             
                             logger.info(f"Engine info: provider={engine_info.get('provider_type')}, engine={engine_type_val}, route={route_val}")
                             
-                            log_tail.append(f"--- Engine Info ---")
-                            log_tail.append(f"provider: {engine_info.get('provider_type')}")
-                            log_tail.append(f"engine: {engine_type_val}")
-                            log_tail.append(f"route: {route_val}")
-                            log_tail.append(f"router_used: {router_used_val}")
-                            log_tail.append(f"-------------------")
-                            
+                                                        
                         try:
                             async for event in do_translate_async_stream(settings, input_path):
                                 stream_started = True
@@ -493,8 +497,8 @@ async def agent_loop():
                                 if not log_tail or log_tail[-1] != log_msg:
                                     log_tail.append(log_msg)
                             
-                                if len(log_tail) > 100:
-                                    log_tail.pop(6)
+                                
+                                    
                                 
                                 with open(log_path, 'a', encoding='utf-8') as f:
                                     f.write(log_msg + "\n")
@@ -517,7 +521,7 @@ async def agent_loop():
                                     if ev_type == "finish" or now_t - last_progress_time > 0.5 or percent > last_progress_percent:
                                         last_progress_time = now_t
                                         last_progress_percent = percent
-                                        await report_progress(percent, phase, event.get("message", ""), active_provider_name=display_name)
+                                        await report_progress(percent, phase, event.get("message", ""), active_provider_name=display_name, execution_metadata=execution_metadata)
                                     
                             job_success = True
                             
@@ -573,7 +577,7 @@ async def agent_loop():
                             final_error_str = error_str
                             
                             try:
-                                await report_progress(last_progress_percent, "failed", error_str, active_provider_name=display_name, log_tail=log_tail[-200:])
+                                await report_progress(last_progress_percent, "failed", error_str, active_provider_name=display_name, log_tail=list(log_tail)[-200:], execution_metadata=execution_metadata)
                             except Exception:
                                 logger.exception("failed to report failed progress")
                             
@@ -604,7 +608,7 @@ async def agent_loop():
                                 message="Conversion completed",
                                 status="completed",
                                 active_provider_name=final_display_name,
-                                log_tail=log_tail[-200:]
+                                log_tail=list(log_tail)[-200:], execution_metadata=execution_metadata if "execution_metadata" in locals() else None
                             )
                         else:
                             await report_progress(
