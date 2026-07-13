@@ -5,6 +5,12 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  packages: write
+  issues: write
+  actions: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -14,6 +20,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m compileall pc-api-python
+      - run: docker compose -f docker-compose.yml -f docker-compose.local.yml config > /dev/null
+      - run: docker compose -f docker-compose.yml -f docker-compose.autodeploy.yml config > /tmp/pdftr-compose-effective.yml
+      - run: |
+          if grep -q "build:" /tmp/pdftr-compose-effective.yml; then
+            echo "❌ Error: 'build:' instruction is present in the autodeploy effective configuration."
+            exit 1
+          fi
+          if ! grep -q "image: ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:production" /tmp/pdftr-compose-effective.yml; then
+            echo "❌ Error: GHCR image is not set correctly in effective configuration."
+            exit 1
+          fi
+          # Check Watchtower is scoped to pc-api only
+          if ! grep -q "com.centurylinklabs.watchtower.enable=true" /tmp/pdftr-compose-effective.yml; then
+            echo "❌ Error: Watchtower label not found for pc-api"
+            exit 1
+          fi
+      - name: actionlint
+        run: |
+          bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint
+      - name: Lint installer
+        run: |
+          if command -v shellcheck &> /dev/null; then
+            shellcheck scripts/install-prod-autodeploy.sh
+          fi
 
   deploy-worker:
     needs: test
@@ -28,6 +59,10 @@ jobs:
   deploy-backend:
     needs: backend-image
     uses: ./.github/workflows/deploy-backend.yml
+    with:
+      image_ref: ${{ needs.backend-image.outputs.image_ref }}
+      image_digest: ${{ needs.backend-image.outputs.image_digest }}
+      git_sha: ${{ needs.backend-image.outputs.git_sha }}
     secrets: inherit
 
   smoke:
@@ -36,18 +71,19 @@ jobs:
     secrets: inherit
 
   finalize:
-    needs: smoke
+    needs: [smoke, backend-image]
     runs-on: ubuntu-latest
     steps:
       - name: Tag stable
         run: |
           curl -sL "https://github.com/google/go-containerregistry/releases/download/v0.19.1/go-containerregistry_Linux_x86_64.tar.gz" | tar -zxvf - crane
           ./crane auth login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-          ./crane tag ghcr.io/${{ github.repository }}/pc-api:${{ github.sha }} stable
+          # The image is verified healthy and passed smoke tests, so we tag it as stable
+          ./crane tag ${{ needs.backend-image.outputs.image_ref }}@${{ needs.backend-image.outputs.image_digest }} stable
 
   rollback:
     if: failure() || cancelled()
-    needs: [deploy-backend, smoke]
+    needs: [deploy-backend, smoke, backend-image]
     runs-on: ubuntu-latest
     steps:
       - name: Check main SHA
@@ -70,6 +106,7 @@ jobs:
           A deployment failure occurred and a rollback was initiated.
           
           - **Failed Git SHA**: \`${{ github.sha }}\`
+          - **Failed Image Digest**: \`${{ needs.backend-image.outputs.image_digest }}\`
           - **Rollback Result**: \`stable\` tag restored to \`production\`. Watchtower will restore it shortly.
           
           Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

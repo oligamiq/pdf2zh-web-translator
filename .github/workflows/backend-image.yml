@@ -1,10 +1,22 @@
 name: Build and Push Backend Image
 on:
   workflow_call:
+    outputs:
+      image_digest:
+        description: "The pushed image digest"
+        value: ${{ jobs.build.outputs.image_digest }}
+      image_ref:
+        description: "The pushed image reference"
+        value: ghcr.io/${{ github.repository }}/pc-api
+      git_sha:
+        description: "The github sha"
+        value: ${{ github.sha }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
 
@@ -15,21 +27,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}/pc-api
-          tags: |
-            type=sha,format=long
-
       - name: Build and Push Docker image
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: ./pc-api-python
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          # We don't use meta action tags here, just the immutable digest.
+          # To keep it identifiable, we can push a git sha tag.
+          tags: ghcr.io/${{ github.repository }}/pc-api:${{ github.sha }}
           build-args: |
             GIT_SHA=${{ github.sha }}
             APP_VERSION=${{ github.ref_name }}

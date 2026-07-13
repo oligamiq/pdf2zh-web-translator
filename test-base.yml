@@ -1,4 +1,4 @@
 services:
   pc-api:
     build:
-      context: ./pc-api-python
+      context: .

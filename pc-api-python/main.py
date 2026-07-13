@@ -49,7 +49,7 @@ class LLMSettings(BaseModel):
 
 @app.middleware("http")
 async def verify_secret(request: Request, call_next):
-    if request.url.path.startswith("/router/"):
+    if request.url.path.startswith("/router/") or request.url.path == "/internal/healthz":
         return await call_next(request)
     secret = os.environ.get("PROXY_SECRET")
     if secret and request.headers.get("X-Proxy-Secret") != secret:
@@ -602,23 +602,29 @@ async def agent_loop():
                                     logger.warning(f"Failed to flush stats: {e}")
 
                         if job_success:
-                                await report_progress(
-                                percent=100,
-                                phase="completed",
-                                message="Conversion completed",
-                                status="completed",
-                                active_provider_name=final_display_name,
-                                log_tail=list(log_tail)[-200:], execution_metadata=execution_metadata if "execution_metadata" in locals() else None
-                            )
+                            try:
+                                payload = {}
+                                if "execution_metadata" in locals() and execution_metadata:
+                                    payload["execution_metadata"] = execution_metadata
+                                await client.post(
+                                    f"{worker_api}/agent/jobs/{job_id}/succeeded",
+                                    json=payload,
+                                    headers={"Authorization": f"Bearer {agent_token}"}
+                                )
+                            except Exception as e:
+                                logger.error(f"failed to report success: {e}")
                         else:
-                            await report_progress(
-                                percent=100,
-                                phase="failed",
-                                message="Conversion failed",
-                                status="failed",
-                                error_msg=final_error_str,
-                                active_provider_name=final_display_name
-                            )
+                            try:
+                                payload = {}
+                                if "execution_metadata" in locals() and execution_metadata:
+                                    payload["execution_metadata"] = execution_metadata
+                                await client.post(
+                                    f"{worker_api}/agent/jobs/{job_id}/failed",
+                                    json=payload,
+                                    headers={"Authorization": f"Bearer {agent_token}"}
+                                )
+                            except Exception as e:
+                                logger.error(f"failed to report failure: {e}")
                     except Exception as e:
                         import traceback
                         logger.error(f"Agent loop job error: {e}")

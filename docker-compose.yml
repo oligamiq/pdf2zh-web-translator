@@ -1,5 +1,7 @@
 services:
   pc-api:
+    build:
+      context: ./pc-api-python
     env_file:
       - .env
     environment:
@@ -29,7 +31,7 @@ services:
       - "127.0.0.1:8789:8080"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/internal/healthz"]
+      test: ["CMD", "python", "-c", "import json, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8080/internal/healthz', timeout=3)); assert data['status'] == 'ok'"]
       interval: 15s
       timeout: 5s
       retries: 4

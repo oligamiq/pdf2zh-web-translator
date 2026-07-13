@@ -1,5 +1,6 @@
 services:
   pc-api:
+    build: !reset null
     image: ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:production
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
