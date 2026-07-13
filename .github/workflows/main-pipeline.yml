@@ -23,22 +23,25 @@ jobs:
       - run: docker compose -f docker-compose.yml config > /dev/null
       - run: docker compose -f docker-compose.yml -f docker-compose.autodeploy.yml config > /tmp/pdftr-compose-effective.yml
       - run: |
-          if grep -q "build:" /tmp/pdftr-compose-effective.yml; then
-            echo "❌ Error: 'build:' instruction is present in the autodeploy effective configuration."
-            cat /tmp/pdftr-compose-effective.yml
+          BUILD_VAL=$(yq e '.services["pc-api"].build // empty' /tmp/pdftr-compose-effective.yml)
+          if [ -n "$BUILD_VAL" ] && [ "$BUILD_VAL" != "null" ]; then
+            echo "❌ Error: build instruction is present in autodeploy effective configuration"
             exit 1
           fi
-          if ! grep -q "image: ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:production" /tmp/pdftr-compose-effective.yml; then
-            echo "❌ Error: GHCR image is not set correctly in effective configuration."
-            cat /tmp/pdftr-compose-effective.yml
+          
+          IMAGE_VAL=$(yq e '.services["pc-api"].image' /tmp/pdftr-compose-effective.yml)
+          if [ "$IMAGE_VAL" != "ghcr.io/oligamiq/pdf2zh-web-translator/pc-api:production" ]; then
+            echo "❌ Error: GHCR image is not set correctly: $IMAGE_VAL"
             exit 1
           fi
-          # Check Watchtower is scoped to pc-api only
-          if ! grep -q "com.centurylinklabs.watchtower.enable" /tmp/pdftr-compose-effective.yml; then
-            echo "❌ Error: Watchtower label not found for pc-api"
-            cat /tmp/pdftr-compose-effective.yml
+          
+          LABEL_VAL=$(yq e '.services["pc-api"].labels["com.centurylinklabs.watchtower.enable"]' /tmp/pdftr-compose-effective.yml)
+          if [ "$LABEL_VAL" != "true" ]; then
+            echo "❌ Error: Watchtower label not found or not true for pc-api: $LABEL_VAL"
             exit 1
           fi
+          
+          echo "✅ Config validation passed!"
       - name: actionlint
         run: |
           bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
