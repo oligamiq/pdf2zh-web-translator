@@ -26,21 +26,16 @@ jobs:
 
       - name: Install Worker dependencies
         working-directory: worker
-        run: npm ci
+        run: npm ci --include=dev
 
-      - name: Apply D1 migrations
-        working-directory: worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          ./node_modules/.bin/wrangler \
-            d1 migrations apply pdf2zh-db \
-            --remote
-
-      - name: Deploy Worker
-        working-directory: worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: ./node_modules/.bin/wrangler deploy
+      - name: Apply D1 migrations and deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          packageManager: npm
+          wranglerVersion: "4.105.0"
+          command: |
+            d1 migrations apply pdf2zh-db --remote
+            deploy
