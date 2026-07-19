@@ -19,19 +19,19 @@
   },
   "dependencies": {
     "@solidjs/meta": "^0.29.4",
-    "@solidjs/router": "^0.16.1",
+    "@solidjs/router": "^0.16.2",
     "@solidjs/start": "^1.1.13",
-    "firebase": "^12.15.0",
+    "firebase": "^12.16.0",
     "solid-js": "^1.9.13",
     "vinxi": "^0.5.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
-    "@types/node": "^24.13.2",
+    "@types/node": "^26.1.1",
     "rollup-plugin-visualizer": "^7.0.1",
-    "typescript": "~6.0.2",
-    "vite": "^8.1.0",
-    "vite-plugin-solid": "^2.11.12",
-    "wrangler": "^4.105.0"
+    "typescript": "~7.0.2",
+    "vite": "^8.1.5",
+    "vite-plugin-solid": "^2.11.13",
+    "wrangler": "^4.112.0"
   }
 }
