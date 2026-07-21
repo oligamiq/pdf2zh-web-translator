@@ -37,6 +37,14 @@ services:
       retries: 4
       start_period: 30s
 
+  pc-api-port-forward:
+    image: alpine/socat
+    restart: unless-stopped
+    command: tcp-listen:8080,fork,reuseaddr tcp-connect:127.0.0.1:8081
+    network_mode: "service:pc-api"
+    depends_on:
+      - pc-api
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
