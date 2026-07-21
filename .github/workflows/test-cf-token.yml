@@ -1,6 +1,8 @@
 name: Test Cloudflare Token
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - test-cloudflare-token
 
 jobs:
   test-token:
