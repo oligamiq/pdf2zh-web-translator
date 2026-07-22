@@ -100,7 +100,7 @@ jobs:
               "$status"
 
             if [ "$reported_sha" = "$expected_sha" ] &&
-               [ "$status" = "online" ]; then
+               { [ "$status" = "online" ] || [ "$status" = "ok" ]; }; then
               echo "Production Backend is running the expected SHA."
               exit 0
             fi
