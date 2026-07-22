@@ -45,7 +45,6 @@ jobs:
         env:
           PROD_SMOKE_TOKEN: ${{ secrets.PROD_SMOKE_TOKEN }}
           PROD_WORKER_URL: https://pdftr.oligami.workers.dev
-          EXPECTED_GIT_SHA: ${{ github.sha }}
         run: |
           set +e
 

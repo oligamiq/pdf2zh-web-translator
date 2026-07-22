@@ -57,14 +57,14 @@ async function main() {
     const healthResp = await fetch(`${WORKER_URL}/health/pc-api`);
     const healthData = await healthResp.json();
     if (!healthResp.ok || !healthData.ok) {
-      console.error(`   ❌ Backend container is offline or unreachable:`, healthData);
+      console.error(`   ❌ Backend container is offline or unreachable [backend_health_failed]:`, healthData);
       writeSummary(summary + `### ❌ Failed: backend_health_failed\nHTTP Status: ${healthResp.status}\nNext action: Check if pc-api container is running and healthy on the host.`);
       process.exit(1);
     }
     console.log(`   ✅ Backend health ok`);
     summary += '- ✅ backend health ok\n';
   } catch (err) {
-    console.error(`   ❌ Failed to check backend health: ${err.message}`);
+    console.error(`   ❌ Failed to check backend health [backend_health_failed]: ${err.message}`);
     writeSummary(summary + `### ❌ Failed: backend_health_failed\nError: ${err.message}\nNext action: Check if pc-api container is running and healthy on the host.`);
     process.exit(1);
   }
@@ -96,8 +96,8 @@ async function main() {
           await new Promise(resolve => setTimeout(resolve, 3000));
           continue;
         }
-        console.error(`   ❌ Failed to create smoke job (HTTP ${resp.status}): ${text}`);
         const errCode = text.includes('D1') ? 'd1_timeout' : 'smoke_job_create_failed';
+        console.error(`   ❌ Failed to create smoke job (HTTP ${resp.status}) [${errCode}]: ${text}`);
         writeSummary(summary + `### ❌ Failed: ${errCode}\nHTTP Status: ${resp.status}\nNext action: Check worker logs or D1 database status.`);
         process.exit(1);
       }
@@ -115,7 +115,7 @@ async function main() {
         await new Promise(resolve => setTimeout(resolve, 3000));
         continue;
       }
-      console.error(`   ❌ Failed to create smoke job: ${err.message}`);
+      console.error(`   ❌ Failed to create smoke job [smoke_job_create_failed]: ${err.message}`);
       writeSummary(summary + `### ❌ Failed: smoke_job_create_failed\nError: ${err.message}\nNext action: Check worker network connectivity.`);
       process.exit(1);
     }
@@ -129,7 +129,7 @@ async function main() {
   while (jobStatus !== 'completed' && jobStatus !== 'failed') {
     pollCount++;
     if (pollCount > 60) { // 60 * 5s = 5 minutes timeout
-      console.error('   ❌ Job timed out (5 minutes)');
+      console.error('   ❌ Job timed out (5 minutes) [job_timeout]');
       summary += `\n### ❌ Failed: job_timeout\n`;
       summary += `- **Job ID**: ${jobId}\n`;
       if (lastJobData) {
@@ -222,7 +222,7 @@ async function main() {
   }
 
   if (missingLogs.length > 0) {
-    console.error(`   ❌ Verification failed: execution_metadata mismatch`);
+    console.error(`   ❌ Verification failed: execution_metadata mismatch [route_assert_failed]`);
     missingLogs.forEach(m => console.error(`      - ${m}`));
     
     summary += `\n### ❌ Failed: route_assert_failed\n`;
