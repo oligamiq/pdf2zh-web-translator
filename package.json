@@ -9,7 +9,7 @@
     "pc-api"
   ],
   "devDependencies": {
-    "turbo": "^2.0.0"
+    "turbo": "^2.10.7"
   },
   "scripts": {
     "build": "turbo run build",
