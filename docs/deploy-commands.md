@@ -7,7 +7,7 @@
 本番環境にデプロイする前に、すべての設定・環境変数・必須ファイルが揃っているか、破壊的操作なしで自動チェックし、安全にデプロイします。
 
 ```bash
-cd /srv/pdf2zh-web/v2
+cd /path/to/pdf2zh-web-translator
 npm install
 npm run verify
 npm run deploy
@@ -23,7 +23,7 @@ npx wrangler d1 create pdf2zh-db
 npx wrangler d1 execute pdf2zh-db --local --file=./schema.sql
 
 # 3. マイグレーション (本番・リモート用)
-cd /srv/pdf2zh-web/v2
+cd /path/to/pdf2zh-web-translator
 npm --prefix worker run migrate:remote
 ```
 
@@ -32,7 +32,7 @@ npm --prefix worker run migrate:remote
 初回構築時やキー変更時のみ実行してください。デプロイフローには含まれません。
 
 ```bash
-cd /srv/pdf2zh-web/v2
+cd /path/to/pdf2zh-web-translator
 npm --prefix worker run secret:turnstile
 npx wrangler secret put PROXY_SECRET
 npx wrangler secret put AGENT_TOKEN
@@ -71,11 +71,11 @@ docker compose down
 # token は git にコミットしないこと
 
 # 2. Host PC 側で docker compose を起動
-cd /srv/pdf2zh-web/v2
-docker compose up -d --build pc-api cloudflared
+cd /path/to/pdf2zh-web-translator
+docker compose -p "${PROD_COMPOSE_PROJECT_NAME:-v2}" -f docker-compose.yml -f docker-compose.autodeploy.yml up -d --build pc-api pc-api-port-forward cloudflared
 
 # 3. Worker 側で VPC Service を作成
-cd /srv/pdf2zh-web/v2/worker
+cd /path/to/pdf2zh-web-translator/worker
 npx wrangler vpc service create pdf2zh-pc-api \
   --type http \
   --tunnel-id "<TUNNEL_ID>" \

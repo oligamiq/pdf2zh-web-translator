@@ -3,7 +3,8 @@ set -e
 
 echo "Starting Router Smoke Test"
 
-cd /srv/pdf2zh-web/v2/scripts
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 echo "Installing requirements..."
 python3 -m pip install fastapi uvicorn httpx --break-system-packages >/dev/null 2>&1

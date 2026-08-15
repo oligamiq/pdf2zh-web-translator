@@ -1,7 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
+PROD_COMPOSE_PROJECT_NAME="${PROD_COMPOSE_PROJECT_NAME:-${COMPOSE_PROJECT_NAME:-v2}}"
+export COMPOSE_PROJECT_NAME="$PROD_COMPOSE_PROJECT_NAME"
+
 echo "Deploying Production Auto-deploy Environment..."
+echo "Compose project: $PROD_COMPOSE_PROJECT_NAME"
 
 # 1. Environment Checks
 if ! command -v docker &> /dev/null; then

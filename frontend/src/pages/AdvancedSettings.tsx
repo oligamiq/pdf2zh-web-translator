@@ -11,7 +11,7 @@ export default function AdvancedSettings() {
   const [message, setMessage] = createSignal<{ type: 'success' | 'error', text: string } | null>(null);
 
   const [showForm, setShowForm] = createSignal(false);
-  const [editingId, setEditingId] = createSignal<number | null>(null);
+  const [editingId, setEditingId] = createSignal<string | null>(null);
   
   // form state
   const [displayName, setDisplayName] = createSignal('');
@@ -24,7 +24,7 @@ export default function AdvancedSettings() {
   const [reasoningEffort, setReasoningEffort] = createSignal('high');
   
   // provider testing state
-  const [testStatuses, setTestStatuses] = createSignal<Record<number, 'Not tested' | 'Testing...' | 'OK' | 'Failed'>>({});
+  const [testStatuses, setTestStatuses] = createSignal<Record<string, 'Not tested' | 'Testing...' | 'OK' | 'Failed'>>({});
 
   const loadProviders = async () => {
     try {
@@ -123,7 +123,7 @@ export default function AdvancedSettings() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('このプロバイダを削除してもよろしいですか？')) return;
     try {
       await deleteApiProvider(id);
@@ -147,7 +147,7 @@ export default function AdvancedSettings() {
     }
   };
 
-  const handleTest = async (id: number) => {
+  const handleTest = async (id: string) => {
     setTestStatuses(prev => ({ ...prev, [id]: 'Testing...' }));
     try {
       await testApiProvider(id);

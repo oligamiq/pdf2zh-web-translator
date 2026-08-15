@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "test": "turbo run test",
+    "test": "turbo run test && npm run test:python",
     "test:e2e": "turbo run test:e2e",
     "lint": "turbo run lint",
     "preflight": "./scripts/preflight-prod.sh",
@@ -30,6 +30,8 @@
     "pc-api:build": "docker compose build pc-api",
     "pc-api:logs": "docker compose logs --tail=200 pc-api",
     "smoke:progress": "./scripts/e2e-progress-smoke.sh",
-    "smoke:prod-siliconflow": "node scripts/prod-smoke-siliconflow.mjs"
+    "smoke:prod-siliconflow": "node scripts/prod-smoke-siliconflow.mjs",
+    "test:python": "python3 -m unittest discover -s pc-api-python/tests -p 'test_*.py' && python3 scripts/test_error_extraction.py",
+    "typecheck": "npm --workspace frontend run typecheck && npm --workspace pdf2zh-worker run typecheck"
   }
 }

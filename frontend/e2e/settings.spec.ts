@@ -37,8 +37,8 @@ test.describe('Settings UI', () => {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
-            target_language: 'ja',
-            has_api_key: false,
+            default_target_language: 'ja',
+            ollama: { has_api_key: false, api_key_last4: null },
           }),
         });
       }
@@ -73,10 +73,42 @@ test.describe('Settings UI', () => {
     await expect(page.locator('text=設定されたProviderはありません。')).toBeVisible();
   });
 
+  test('should map basic settings UI fields to the Worker API contract', async ({ page }) => {
+    let putBody: any = null;
+    await page.route('**/settings/api/basic', async (route) => {
+      if (route.request().method() === 'GET') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            default_target_language: 'ja',
+            ollama: { has_api_key: false, api_key_last4: null },
+          }),
+        });
+      }
+      if (route.request().method() === 'PUT') {
+        putBody = JSON.parse(route.request().postData() || '{}');
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+      }
+      route.fallback();
+    });
+
+    await page.goto('/settings');
+    await page.selectOption('#default-target-language', 'fr');
+    await page.fill('#ollama-api-key', 'test-api-key');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+
+    await expect(page.locator('.alert-success')).toContainText('Settings saved successfully.');
+    expect(putBody).toEqual({
+      default_target_language: 'fr',
+      ollama_api_key: 'test-api-key',
+    });
+  });
+
   test('should allow adding SiliconFlow Free provider without API key and confirm privacy', async ({ page }) => {
     // Mock GET /settings/api/basic
     await page.route('**/settings/api/basic', async (route) => {
-      return route.fulfill({ status: 200, body: JSON.stringify({ target_language: 'ja', has_api_key: false }) });
+      return route.fulfill({ status: 200, body: JSON.stringify({ default_target_language: 'ja', ollama: { has_api_key: false, api_key_last4: null } }) });
     });
     
     // Mock GET /settings/api/providers
@@ -87,7 +119,7 @@ test.describe('Settings UI', () => {
         if (getCallCount === 1) {
           return route.fulfill({ status: 200, body: JSON.stringify([]) });
         } else {
-          return route.fulfill({ status: 200, body: JSON.stringify([{ id: 1, provider_type: 'siliconflow_free', enabled: true, display_name: 'SiliconFlow Free' }]) });
+          return route.fulfill({ status: 200, body: JSON.stringify([{ id: 'provider-1', provider_type: 'siliconflow_free', enabled: true, display_name: 'SiliconFlow Free' }]) });
         }
       }
       route.fallback();
@@ -98,7 +130,7 @@ test.describe('Settings UI', () => {
     await page.route('**/settings/api/providers', async (route) => {
       if (route.request().method() === 'POST') {
         postBody = JSON.parse(route.request().postData() || '{}');
-        return route.fulfill({ status: 200, body: JSON.stringify({ id: 1 }) });
+        return route.fulfill({ status: 200, body: JSON.stringify({ id: 'provider-1' }) });
       }
       route.fallback();
     });

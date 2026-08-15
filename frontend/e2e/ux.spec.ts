@@ -100,14 +100,14 @@ test.describe('UX Improvements', () => {
 
   test('should parse API test errors correctly and remove Default URL text', async ({ page }) => {
     await page.route('**/settings/api/basic', async route => {
-      return route.fulfill({ status: 200, body: JSON.stringify({ target_language: 'ja', has_api_key: false }) });
+      return route.fulfill({ status: 200, body: JSON.stringify({ default_target_language: 'ja', ollama: { has_api_key: false, api_key_last4: null } }) });
     });
     
     await page.route('**/settings/api/providers', async route => {
-      return route.fulfill({ status: 200, body: JSON.stringify([{ id: 1, provider_type: 'openai_compatible', enabled: true, display_name: 'Test Provider', base_url: '', model: '' }]) });
+      return route.fulfill({ status: 200, body: JSON.stringify([{ id: 'provider-1', provider_type: 'openai_compatible', enabled: true, display_name: 'Test Provider', base_url: '', model: '' }]) });
     });
 
-    await page.route('**/settings/api/providers/1/test', async route => {
+    await page.route('**/settings/api/providers/provider-1/test', async route => {
       return route.fulfill({ 
         status: 400, 
         body: JSON.stringify({ message: "API key is not set." }) 

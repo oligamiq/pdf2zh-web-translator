@@ -5,6 +5,10 @@ import uuid
 import shutil
 import asyncio
 import logging
+import re
+import secrets
+import unicodedata
+from urllib.parse import quote
 from typing import Optional, Dict, Any
 from zipfile import ZipFile
 
@@ -20,13 +24,20 @@ from router import handle_router_request, ROUTER_STATES
 
 app = FastAPI()
 
+def router_bearer_token(request: Request) -> str | None:
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    token = auth[7:].strip()
+    return token or None
+
 @app.api_route("/router/{job_id}/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
 async def router_proxy(job_id: str, path: str, request: Request):
-    return await handle_router_request(job_id, request)
+    return await handle_router_request(job_id, request, router_bearer_token(request))
 
 @app.api_route("/router/{job_id}/v1", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
 async def router_proxy_root(job_id: str, request: Request):
-    return await handle_router_request(job_id, request)
+    return await handle_router_request(job_id, request, router_bearer_token(request))
 logger = logging.getLogger("pc-api-python")
 logging.basicConfig(level=logging.INFO)
 
@@ -41,6 +52,27 @@ WORK_DIR = os.path.join(DATA_DIR, "work")
 for d in [UPLOAD_DIR, OUTPUT_DIR, LOG_DIR, WORK_DIR]:
     os.makedirs(d, exist_ok=True)
 
+JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+def validate_job_id(job_id: str) -> str:
+    if not JOB_ID_RE.fullmatch(job_id):
+        raise HTTPException(status_code=400, detail="invalid_job_id")
+    return job_id
+
+def sanitize_download_basename(value: str) -> str:
+    name = os.path.basename(str(value or "translated").replace("\\", "/"))
+    name = re.sub(r'[\x00-\x1f\x7f/\\";:]', "_", name).strip(" .")
+    if name.lower().endswith(".pdf"):
+        name = name[:-4].rstrip(" .")
+    return (name or "translated")[:120]
+
+def content_disposition(disposition: str, filename: str) -> str:
+    ascii_name = unicodedata.normalize("NFKD", filename).encode("ascii", "ignore").decode("ascii")
+    ascii_name = re.sub(r"[^A-Za-z0-9._ -]", "_", ascii_name).strip(" .") or "download"
+    ascii_name = ascii_name[:160]
+    encoded = quote(filename, safe="")
+    return f"{disposition}; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
+
 class LLMSettings(BaseModel):
     source: Optional[str] = None
     base_url: Optional[str] = None
@@ -51,8 +83,14 @@ class LLMSettings(BaseModel):
 async def verify_secret(request: Request, call_next):
     if request.url.path.startswith("/router/") or request.url.path == "/internal/healthz":
         return await call_next(request)
+
     secret = os.environ.get("PROXY_SECRET")
-    if secret and request.headers.get("X-Proxy-Secret") != secret:
+    if not secret:
+        logger.error("PROXY_SECRET is not configured; refusing internal request")
+        return Response(status_code=503, content="Proxy authentication is not configured")
+
+    provided = request.headers.get("X-Proxy-Secret") or ""
+    if not secrets.compare_digest(provided, secret):
         logger.warning(f"proxy secret rejected: path={request.url.path}")
         return Response(status_code=403, content="Forbidden")
     response = await call_next(request)
@@ -74,6 +112,7 @@ async def wake_agent():
 
 @app.put("/internal/files/{job_id}/input")
 async def put_input(job_id: str, request: Request):
+    validate_job_id(job_id)
     logger.info(f"received input upload: job_id={job_id}")
     job_upload_dir = os.path.join(UPLOAD_DIR, job_id)
     os.makedirs(job_upload_dir, exist_ok=True)
@@ -86,6 +125,7 @@ async def put_input(job_id: str, request: Request):
 
 @app.get("/internal/jobs/{job_id}/log")
 async def get_log(job_id: str, offset: int = 0, limit: int = 65536):
+    validate_job_id(job_id)
     log_path = os.path.join(LOG_DIR, f"{job_id}.log")
     if not os.path.exists(log_path):
         return JSONResponse({"data": "", "next_offset": 0})
@@ -103,6 +143,7 @@ async def get_log(job_id: str, offset: int = 0, limit: int = 65536):
 
 @app.get("/internal/jobs/{job_id}/download")
 async def download_output(job_id: str, type: str = "zip", filename: str = "translated"):
+    validate_job_id(job_id)
     dir_path = os.path.join(OUTPUT_DIR, job_id)
     
     pdfs = glob.glob(os.path.join(dir_path, "*.pdf"))
@@ -119,19 +160,13 @@ async def download_output(job_id: str, type: str = "zip", filename: str = "trans
         if not target_pdf:
             target_pdf = pdfs[0]
             
-        base_name = filename
-        if base_name.lower().endswith('.pdf'):
-            base_name = base_name[:-4]
-            
+        base_name = sanitize_download_basename(filename)
         real_filename = f"{base_name}_{type}.pdf"
-        # Use content-disposition inline for PDF so the browser can display it
-        headers = {"Content-Disposition": f'inline; filename="{real_filename}"'}
+        # ASCII header plus RFC 5987 filename* keeps Japanese/non-ASCII names valid.
+        headers = {"Content-Disposition": content_disposition("inline", real_filename)}
         return FileResponse(target_pdf, media_type="application/pdf", headers=headers)
     
-    base_name = filename
-    if base_name.lower().endswith('.pdf'):
-        base_name = base_name[:-4]
-        
+    base_name = sanitize_download_basename(filename)
     zip_name = f"{base_name}.zip"
     zip_path = os.path.join(WORK_DIR, f"{job_id}.zip")
     with ZipFile(zip_path, 'w') as zipf:
@@ -151,19 +186,25 @@ async def download_output(job_id: str, type: str = "zip", filename: str = "trans
                     
                 zipf.write(file_path, arcname)
                 
-    headers = {"Content-Disposition": f'attachment; filename="{zip_name}"'}
+    headers = {"Content-Disposition": content_disposition("attachment", zip_name)}
     return FileResponse(zip_path, media_type="application/zip", headers=headers)
 
 @app.post("/internal/files/{job_id}/delete")
 async def delete_job(job_id: str):
+    validate_job_id(job_id)
     for d in [UPLOAD_DIR, OUTPUT_DIR, WORK_DIR]:
         shutil.rmtree(os.path.join(d, job_id), ignore_errors=True)
+    zip_file = os.path.join(WORK_DIR, f"{job_id}.zip")
+    if os.path.exists(zip_file):
+        os.remove(zip_file)
     log_file = os.path.join(LOG_DIR, f"{job_id}.log")
     if os.path.exists(log_file):
         os.remove(log_file)
+    ROUTER_STATES.pop(job_id, None)
     return Response(status_code=200)
 
 async def run_job(job_id: str, llm_settings: dict = None):
+    validate_job_id(job_id)
     input_path = os.path.join(UPLOAD_DIR, job_id, "input.pdf")
     output_dir = os.path.join(OUTPUT_DIR, job_id)
     log_path = os.path.join(LOG_DIR, f"{job_id}.log")
@@ -228,6 +269,7 @@ async def run_job(job_id: str, llm_settings: dict = None):
 
 @app.post("/internal/jobs/{job_id}/run")
 async def trigger_run(job_id: str, background_tasks: BackgroundTasks):
+    validate_job_id(job_id)
     background_tasks.add_task(run_job, job_id)
     return Response(status_code=202)
 
@@ -303,11 +345,12 @@ async def agent_loop():
                                 payload["log_tail"] = text
                     
                         try:
-                            await client.post(
+                            response = await client.post(
                                 f"{worker_api}/agent/jobs/{job_id}/progress",
                                 json=payload,
                                 headers={"Authorization": f"Bearer {agent_token}"}
                             )
+                            response.raise_for_status()
                         except Exception as e:
                             logger.warning(f"Failed to report progress: {e}")
 
@@ -322,11 +365,12 @@ async def agent_loop():
                             "error_message": error_message
                         }
                         try:
-                            await client.post(
+                            response = await client.post(
                                 f"{worker_api}/agent/jobs/{job_id}/attempts",
                                 json=payload,
                                 headers={"Authorization": f"Bearer {agent_token}"}
                             )
+                            response.raise_for_status()
                         except Exception as e:
                             logger.warning(f"Failed to report attempt: {e}")
 
@@ -382,11 +426,12 @@ async def agent_loop():
                             "rate_limit_count": 1 if http_status == 429 else 0
                         }]}
                         try:
-                            await client.post(
+                            response = await client.post(
                                 f"{worker_api}/agent/jobs/{job_id}/provider_stats",
                                 json=payload,
                                 headers={"Authorization": f"Bearer {agent_token}"}
                             )
+                            response.raise_for_status()
                         except Exception as e:
                             logger.warning(f"Failed to report provider stats: {e}")
 
@@ -420,7 +465,9 @@ async def agent_loop():
                         final_error_str = "All providers failed."
                         
                         from router import ROUTER_STATES
+                        router_token = secrets.token_urlsafe(32)
                         ROUTER_STATES[job_id] = {
+                            "token": router_token,
                             "providers": provider_snapshots,
                             "stats": {},
                             "consecutive_router_failures": 0,
@@ -445,7 +492,7 @@ async def agent_loop():
                                             "translate_engine_type": "OpenAICompatible",
                                             "openai_compatible_model": "router",
                                             "openai_compatible_base_url": f"{os.environ.get('PC_API_INTERNAL_BASE_URL', 'http://127.0.0.1:8081')}/router/{job_id}/v1",
-                                            "openai_compatible_api_key": "dummy"
+                                            "openai_compatible_api_key": router_token
                                         },
                                         "display_name": provider.get("display_name"),
                                         "id": provider.get("id"),
@@ -464,21 +511,38 @@ async def agent_loop():
                         for engine_idx, engine_info in enumerate(engines_to_try):
                             if job_success:
                                 break
-                                
+
                             translate_engine_settings = engine_info["engine_config"]
-                            
                             settings = SettingsModel(
                                 translation={"lang_in": lang_in, "lang_out": lang_out, "output": output_dir},
                                 pdf={"watermark_output_mode": watermark_output_mode},
                                 translate_engine_settings=translate_engine_settings
                             )
 
-                            await report_attempt(engine_info.get("id"), engine_idx + 1, engine_info.get("display_name"), engine_info.get("model"), "running")
+                            display_name = engine_info.get("display_name") or "Unknown"
+                            state = ROUTER_STATES.get(job_id)
+                            if state is not None:
+                                state["active_provider_name"] = display_name
+                            if engine_idx > 0:
+                                await report_progress(
+                                    last_progress_percent,
+                                    "retrying",
+                                    f"Retrying with {display_name}",
+                                    active_provider_name=display_name,
+                                )
+
+                            await report_attempt(
+                                engine_info.get("id"),
+                                engine_idx + 1,
+                                display_name,
+                                engine_info.get("model"),
+                                "running",
+                            )
                             stream_started = False
-                            
+
                             engine_type_val = translate_engine_settings.get("translate_engine_type")
                             route_val = 'router' if engine_type_val == 'OpenAICompatible' else 'pdf2zh_native'
-                            router_used_val = True if engine_type_val == 'OpenAICompatible' else False
+                            router_used_val = engine_type_val == 'OpenAICompatible'
                             execution_metadata = {
                                 "provider": engine_info.get("provider_type"),
                                 "engine": engine_type_val,
@@ -486,112 +550,130 @@ async def agent_loop():
                                 "router_used": router_used_val,
                                 "backend_git_sha": os.environ.get("GIT_SHA", "unknown"),
                             }
-                            
-                            logger.info(f"Engine info: provider={engine_info.get('provider_type')}, engine={engine_type_val}, route={route_val}")
-                            
-                                                        
-                        try:
-                            async for event in do_translate_async_stream(settings, input_path):
-                                stream_started = True
-                                ev_type = event.get("type")
-                                
-                                state = ROUTER_STATES.get(job_id, {})
-                                display_name = state.get("active_provider_name", "Unknown")
-                                
-                                log_msg = str(event)
-                                
-                                if not log_tail or log_tail[-1] != log_msg:
-                                    log_tail.append(log_msg)
-                            
-                                
-                                    
-                                
-                                with open(log_path, 'a', encoding='utf-8') as f:
-                                    f.write(log_msg + "\n")
-                                
-                                if ev_type in ("progress_start", "progress_update", "progress_end", "finish"):
-                                    new_percent = normalize_progress(event.get("overall_progress", event.get("percent")))
-                                    if new_percent is None:
-                                        percent = last_progress_percent
-                                    else:
-                                        percent = max(last_progress_percent, new_percent)
 
-                                    phase = event.get("phase", "processing")
-                                
-                                    if ev_type == "finish":
-                                        percent = 100
-                                        phase = "completed"
+                            logger.info(
+                                f"Engine info: provider={engine_info.get('provider_type')}, "
+                                f"engine={engine_type_val}, route={route_val}"
+                            )
 
-                                    now_t = asyncio.get_event_loop().time()
-                                
-                                    if ev_type == "finish" or now_t - last_progress_time > 0.5 or percent > last_progress_percent:
-                                        last_progress_time = now_t
-                                        last_progress_percent = percent
-                                        await report_progress(percent, phase, event.get("message", ""), active_provider_name=display_name, execution_metadata=execution_metadata)
-                                    
-                            job_success = True
-                            
-                        except Exception as e:
-                            import traceback
-                            state = ROUTER_STATES.get(job_id, {})
-                            display_name = state.get("active_provider_name", "Unknown")
-                            logger.exception(f"Job {job_id} failed with provider {display_name}")
-                        
-                            error_str = str(e)
-                            http_status_code = None
-                            http_err = extract_http_status_error(e)
-                            if http_err:
-                                http_status_code = getattr(http_err.response, "status_code", getattr(http_err.response, "status", None))
-                                body = getattr(http_err.response, "text", getattr(http_err.response, "content", b""))
-                                if isinstance(body, bytes):
-                                    body = body.decode('utf-8', errors='replace')
-                                body = body[:2048]
-                                req_url = str(getattr(http_err.request, "url", ""))
-                            
-                                if http_status_code in (301, 302, 307, 308):
-                                    error_str = f"HTTP {http_status_code} Base URL redirects. Please use the final API URL."
-                                elif http_status_code == 401:
-                                    error_str = f"HTTP {http_status_code} API key is invalid."
-                                elif http_status_code == 429:
-                                    error_str = f"HTTP {http_status_code} Rate limit or quota exceeded."
-                                elif http_status_code == 400:
-                                    error_str = f"HTTP {http_status_code} Model/Base URL/request parameter may be invalid."
-                                elif http_status_code and http_status_code >= 500:
-                                    error_str = f"HTTP {http_status_code} Provider server error."
-                                else:
-                                    error_str = f"HTTP {http_status_code} API request failed."
-                                
-                                log_tail.append(f"--- HTTPStatusError Detail ---")
-                                log_tail.append(f"Provider: {display_name}")
-                                log_tail.append(f"Request URL: {req_url}")
-                                log_tail.append(f"Status Code: {http_status_code}")
-                                log_tail.append(f"Stream Started: {stream_started}")
-                                if http_status_code in (301, 302, 307, 308):
-                                    log_tail.append("Response Body: <HTML response omitted due to redirect>")
-                                elif "<html" in body.lower() or "<!doctype html>" in body.lower():
-                                    log_tail.append("Response Body: <HTML response omitted>")
-                                else:
-                                    log_tail.append(f"Response Body:\n{body}")
-                                log_tail.append(f"------------------------------")
-
-                            elif isinstance(e, (httpx.TimeoutException, httpx.ConnectError)):
-                                error_str = f"LLM API request failed: Connection error or timeout."
-                        
-                            tb_str = traceback.format_exc()
-                            log_tail.append(f"Exception:\n{tb_str}")
-                            
-                            final_error_str = error_str
-                            
                             try:
-                                await report_progress(last_progress_percent, "failed", error_str, active_provider_name=display_name, log_tail=list(log_tail)[-200:], execution_metadata=execution_metadata)
-                            except Exception:
-                                logger.exception("failed to report failed progress")
-                            
+                                async for event in do_translate_async_stream(settings, input_path):
+                                    stream_started = True
+                                    ev_type = event.get("type")
+
+                                    state = ROUTER_STATES.get(job_id, {})
+                                    active_display_name = state.get("active_provider_name", display_name)
+                                    log_msg = str(event)
+                                    if not log_tail or log_tail[-1] != log_msg:
+                                        log_tail.append(log_msg)
+
+                                    with open(log_path, 'a', encoding='utf-8') as f:
+                                        f.write(log_msg + "\n")
+
+                                    if ev_type in ("progress_start", "progress_update", "progress_end", "finish"):
+                                        new_percent = normalize_progress(event.get("overall_progress", event.get("percent")))
+                                        percent = last_progress_percent if new_percent is None else max(last_progress_percent, new_percent)
+                                        phase = event.get("phase", "processing")
+
+                                        if ev_type == "finish":
+                                            percent = 100
+                                            phase = "completed"
+
+                                        now_t = asyncio.get_event_loop().time()
+                                        if ev_type == "finish" or now_t - last_progress_time > 0.5 or percent > last_progress_percent:
+                                            last_progress_time = now_t
+                                            last_progress_percent = percent
+                                            await report_progress(
+                                                percent,
+                                                phase,
+                                                event.get("message", ""),
+                                                active_provider_name=active_display_name,
+                                                execution_metadata=execution_metadata,
+                                            )
+
+                                state = ROUTER_STATES.get(job_id, {})
+                                if router_used_val and state.get("consecutive_router_failures", 0) >= 3:
+                                    raise RuntimeError("Router exhausted providers repeatedly during translation")
+
+                                job_success = True
+                                await report_attempt(
+                                    engine_info.get("id"),
+                                    engine_idx + 1,
+                                    state.get("active_provider_name", display_name),
+                                    engine_info.get("model"),
+                                    "completed",
+                                )
+
+                            except Exception as e:
+                                import traceback
+                                state = ROUTER_STATES.get(job_id, {})
+                                active_display_name = state.get("active_provider_name", display_name)
+                                logger.exception(f"Job {job_id} failed with provider {active_display_name}")
+
+                                error_str = str(e)
+                                http_status_code = None
+                                http_err = extract_http_status_error(e)
+                                if http_err:
+                                    http_status_code = getattr(http_err.response, "status_code", getattr(http_err.response, "status", None))
+                                    body = getattr(http_err.response, "text", getattr(http_err.response, "content", b""))
+                                    if isinstance(body, bytes):
+                                        body = body.decode('utf-8', errors='replace')
+                                    body = str(body)[:2048]
+                                    req_url = str(getattr(http_err.request, "url", ""))
+
+                                    if http_status_code in (301, 302, 307, 308):
+                                        error_str = f"HTTP {http_status_code} Base URL redirects. Please use the final API URL."
+                                    elif http_status_code == 401:
+                                        error_str = f"HTTP {http_status_code} API key is invalid."
+                                    elif http_status_code == 429:
+                                        error_str = f"HTTP {http_status_code} Rate limit or quota exceeded."
+                                    elif http_status_code == 400:
+                                        error_str = f"HTTP {http_status_code} Model/Base URL/request parameter may be invalid."
+                                    elif http_status_code and http_status_code >= 500:
+                                        error_str = f"HTTP {http_status_code} Provider server error."
+                                    else:
+                                        error_str = f"HTTP {http_status_code} API request failed."
+
+                                    log_tail.append("--- HTTPStatusError Detail ---")
+                                    log_tail.append(f"Provider: {active_display_name}")
+                                    log_tail.append(f"Request URL: {req_url}")
+                                    log_tail.append(f"Status Code: {http_status_code}")
+                                    log_tail.append(f"Stream Started: {stream_started}")
+                                    if http_status_code in (301, 302, 307, 308):
+                                        log_tail.append("Response Body: <HTML response omitted due to redirect>")
+                                    elif "<html" in body.lower() or "<!doctype html>" in body.lower():
+                                        log_tail.append("Response Body: <HTML response omitted>")
+                                    else:
+                                        log_tail.append(f"Response Body:\n{body}")
+                                    log_tail.append("------------------------------")
+                                elif isinstance(e, (httpx.TimeoutException, httpx.ConnectError)):
+                                    error_str = "LLM API request failed: Connection error or timeout."
+
+                                log_tail.append(f"Exception:\n{traceback.format_exc()}")
+                                final_error_str = error_str
+
+                                try:
+                                    await report_progress(
+                                        last_progress_percent,
+                                        "failed",
+                                        error_str,
+                                        active_provider_name=active_display_name,
+                                        log_tail=list(log_tail)[-200:],
+                                        execution_metadata=execution_metadata,
+                                    )
+                                except Exception:
+                                    logger.exception("failed to report failed progress")
+
                                 if engine_info.get("id"):
-                                    await report_attempt(engine_info.get("id"), engine_idx + 1, display_name, engine_info.get("model"), "failed", http_status=http_status_code, error_message=error_str)
-                            
-                        finally:
-                            pass
+                                    await report_attempt(
+                                        engine_info.get("id"),
+                                        engine_idx + 1,
+                                        active_display_name,
+                                        engine_info.get("model"),
+                                        "failed",
+                                        http_status=http_status_code,
+                                        error_message=error_str,
+                                    )
 
                         state = ROUTER_STATES.pop(job_id, None)
                         final_display_name = state.get("active_provider_name", "Unknown") if state else "Unknown"
@@ -599,11 +681,12 @@ async def agent_loop():
                             stats_list = list(state["stats"].values())
                             if stats_list:
                                 try:
-                                    await client.post(
+                                    response = await client.post(
                                         f"{worker_api}/agent/jobs/{job_id}/provider_stats",
                                         json={"stats": stats_list},
                                         headers={"Authorization": f"Bearer {agent_token}"}
                                     )
+                                    response.raise_for_status()
                                 except Exception as e:
                                     logger.warning(f"Failed to flush stats: {e}")
 
@@ -612,11 +695,12 @@ async def agent_loop():
                                 payload = {}
                                 if "execution_metadata" in locals() and execution_metadata:
                                     payload["execution_metadata"] = execution_metadata
-                                await client.post(
+                                response = await client.post(
                                     f"{worker_api}/agent/jobs/{job_id}/succeeded",
                                     json=payload,
                                     headers={"Authorization": f"Bearer {agent_token}"}
                                 )
+                                response.raise_for_status()
                             except Exception as e:
                                 logger.error(f"failed to report success: {e}")
                         else:
@@ -624,11 +708,12 @@ async def agent_loop():
                                 payload = {}
                                 if "execution_metadata" in locals() and execution_metadata:
                                     payload["execution_metadata"] = execution_metadata
-                                await client.post(
+                                response = await client.post(
                                     f"{worker_api}/agent/jobs/{job_id}/failed",
                                     json=payload,
                                     headers={"Authorization": f"Bearer {agent_token}"}
                                 )
+                                response.raise_for_status()
                             except Exception as e:
                                 logger.error(f"failed to report failure: {e}")
                     except Exception as e:

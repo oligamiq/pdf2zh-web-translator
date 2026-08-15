@@ -1,9 +1,0 @@
---- src/index.ts
-+++ src/index.ts
-@@ -1412,6 +1412,2 @@
- 
--app.get('/public/temp-get-legacy-token/:id', async (c) => {
--  return c.text(await sha256Hex(c.req.param('id') + c.env.PUBLIC_RATE_LIMIT_SALT));
--});
--
- app.get('/jobs/:id/files/:kind', async (c) => {

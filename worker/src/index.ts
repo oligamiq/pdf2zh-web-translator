@@ -6,6 +6,55 @@ function isOpenAICompatibleProvider(providerType: string | null | undefined): bo
   return providerType === "openai_compatible" || providerType === "openaicompatible";
 }
 
+const SUPPORTED_TARGET_LANGUAGES = new Set(['ja', 'en', 'zh', 'ko', 'fr', 'de', 'es']);
+
+function securitySecret(env: Env, purpose: 'rate-limit' | 'receipt' | 'pdf-view'): string {
+  const explicit = purpose === 'receipt'
+    ? env.RECEIPT_SIGNING_SECRET
+    : purpose === 'pdf-view'
+      ? env.PDF_VIEW_TOKEN_SECRET
+      : env.PUBLIC_RATE_LIMIT_SALT;
+  const fallback = env.PUBLIC_RATE_LIMIT_SALT || env.PROXY_SECRET;
+  const value = explicit || fallback;
+  if (!value) throw new Error(`Missing server secret for ${purpose}`);
+  return value;
+}
+
+function validateExternalProviderBaseUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  try {
+    const url = new URL(raw.trim());
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    if (url.username || url.password || url.search || url.hash) return null;
+
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (!hostname || hostname === 'localhost' || hostname.endsWith('.localhost')) return null;
+    if (hostname === 'host.docker.internal' || hostname === 'gateway.docker.internal') return null;
+
+    const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (ipv4) {
+      const octets = ipv4.slice(1).map(Number);
+      if (octets.some(v => v > 255)) return null;
+      const [a, b] = octets;
+      if (a === 0 || a === 10 || a === 127 || a >= 224) return null;
+      if (a === 100 && b >= 64 && b <= 127) return null;
+      if (a === 169 && b === 254) return null;
+      if (a === 172 && b >= 16 && b <= 31) return null;
+      if (a === 192 && b === 168) return null;
+      if (a === 198 && (b === 18 || b === 19)) return null;
+    } else if (hostname.includes(':')) {
+      if (hostname === '::' || hostname === '::1' || /^f[cd]/.test(hostname) || /^fe[89ab]/.test(hostname)) return null;
+    } else if (!hostname.includes('.')) {
+      // Single-label DNS names are normally private/LAN names.
+      return null;
+    }
+
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return null;
+  }
+}
+
 
 export type Env = {
   DB: D1Database;
@@ -30,6 +79,7 @@ export type Env = {
   PUBLIC_FALLBACK_LLM_SOURCE?: string;
   PUBLIC_FALLBACK_LLM_BASE_URL?: string;
   PUBLIC_FALLBACK_LLM_MODEL?: string;
+  PUBLIC_FALLBACK_LLM_API_KEY?: string;
   SILICONFLOW_API_KEY?: string;
   SMOKE_TOKEN?: string;
 }
@@ -85,8 +135,8 @@ async function hmacSha256Hex(secret: string, data: string): Promise<string> {
   return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a == null || b == null || a.length !== b.length) return false;
+function timingSafeEqual(a: unknown, b: unknown): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
   let mismatch = 0;
   for (let i = 0; i < a.length; ++i) {
     mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
@@ -103,7 +153,7 @@ async function sha256Hex(message: string): Promise<string> {
 async function verifyTurnstile(token: string, secretKey: string | undefined, testBypass: string | undefined): Promise<boolean> {
   if (testBypass === 'true') return true;
   if (!secretKey || !token) return false;
-  
+
   const formData = new FormData();
   formData.append('secret', secretKey);
   formData.append('response', token);
@@ -123,7 +173,7 @@ async function verifyTurnstile(token: string, secretKey: string | undefined, tes
 async function checkRateLimit(db: D1Database, key: string, limit: number, windowMs: number): Promise<boolean> {
   const now = new Date();
   const windowStart = new Date(now.getTime() - windowMs).toISOString();
-  
+
   await db.prepare(`
     INSERT INTO public_rate_limits (key, window_start, count)
     VALUES (?, ?, 1)
@@ -132,7 +182,7 @@ async function checkRateLimit(db: D1Database, key: string, limit: number, window
       window_start = CASE WHEN window_start < ? THEN ? ELSE window_start END,
       updated_at = ?
   `).bind(key, now.toISOString(), windowStart, windowStart, now.toISOString(), now.toISOString()).run();
-  
+
   const record = await db.prepare(`SELECT count FROM public_rate_limits WHERE key = ?`).bind(key).first();
   if (!record) return false;
   return (record.count as number) <= limit;
@@ -146,12 +196,12 @@ async function ensureUserProviders(env: Env, uid: string) {
   const oldSettings = await env.DB.prepare(`SELECT llm_source, llm_base_url, llm_model, encrypted_api_key, api_key_iv, api_key_key_version FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
   if (oldSettings && oldSettings.encrypted_api_key && oldSettings.llm_source) {
     const newId = crypto.randomUUID();
-    
-    let encKey = oldSettings.encrypted_api_key as string;
-    let iv = oldSettings.api_key_iv as string;
+
+    let encKey: string | null = oldSettings.encrypted_api_key as string;
+    let iv: string | null = oldSettings.api_key_iv as string;
     let keyVersion = (oldSettings.api_key_key_version as string) || 'v1';
-    
-    if (env.USER_SETTINGS_SECRET) {
+
+    if (env.USER_SETTINGS_SECRET && encKey && iv) {
       try {
         const plainKey = await decryptApiKey(
           encKey,
@@ -168,13 +218,22 @@ async function ensureUserProviders(env: Env, uid: string) {
         iv = reEncrypted.iv;
         keyVersion = reEncrypted.keyVersion;
       } catch (e) {
-        console.error("Migration decryption failed", e);
+        // Never copy ciphertext into a provider row under a different AAD/context:
+        // it would be permanently undecryptable and make future jobs fail.
+        console.error("Migration decryption failed; migrating provider without the unusable key", e);
+        encKey = null;
+        iv = null;
+        keyVersion = 'v1';
       }
+    } else {
+      encKey = null;
+      iv = null;
+      keyVersion = 'v1';
     }
-    
-    let displayName = isOpenAICompatibleProvider(oldSettings.llm_source as string) ? 'Ollama' : 
+
+    let displayName = isOpenAICompatibleProvider(oldSettings.llm_source as string) ? 'Ollama' :
                       (oldSettings.llm_source as string).charAt(0).toUpperCase() + (oldSettings.llm_source as string).slice(1);
-    
+
     await env.DB.prepare(`
       INSERT INTO user_api_providers (id, user_id, display_name, provider_type, base_url, model, encrypted_api_key, api_key_iv, api_key_key_version, priority, enabled)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
@@ -275,9 +334,9 @@ async function verifyFirebaseToken(token: string, projectId: string, authMode: s
   if (!token) throw new Error("No token")
   if (authMode === 'mock') {
     if (token.startsWith('mock-')) return 'mock-user-123'
-    return 'mock-user-123' // fallback for testing
+    throw new Error('Invalid mock token')
   }
-  
+
   try {
     let jwks;
     // @ts-ignore
@@ -287,7 +346,7 @@ async function verifyFirebaseToken(token: string, projectId: string, authMode: s
     } else {
       jwks = JWKS
     }
-    
+
     // @ts-ignore
     let issuer = env.FIREBASE_ISSUER_OVERRIDE || `https://securetoken.google.com/${projectId}`;
 
@@ -295,11 +354,11 @@ async function verifyFirebaseToken(token: string, projectId: string, authMode: s
       issuer: issuer,
       audience: projectId,
     })
-    
+
     if (!payload.sub) {
       throw new Error("Missing sub in token")
     }
-    
+
     return payload.sub
   } catch (e: any) {
     throw new Error(`Invalid Firebase token: ${e.message}`)
@@ -328,18 +387,18 @@ app.use('/settings/*', authMiddleware)
 
 app.get('/settings/api/basic', async (c) => {
   const uid = c.get('uid') as string;
-  let default_target_language = 'zh';
+  let default_target_language = 'ja';
   const basicSettings = await c.env.DB.prepare(`SELECT language FROM user_basic_settings WHERE user_id = ?`).bind(uid).first();
   if (basicSettings && basicSettings.language) {
     default_target_language = basicSettings.language as string;
   }
-  
+
   const providers = await ensureUserProviders(c.env, uid);
   const ollamaProvider = providers.find((p: any) => isOpenAICompatibleProvider(p.provider_type)) || providers[0];
-  
+
   let has_api_key = false;
   let api_key_last4 = null;
-  
+
   if (ollamaProvider && ollamaProvider.encrypted_api_key) {
     has_api_key = true;
     if (c.env.USER_SETTINGS_SECRET && ollamaProvider.api_key_iv) {
@@ -374,8 +433,11 @@ app.put('/settings/api/basic', async (c) => {
   const uid = c.get('uid') as string;
   const body = await c.req.json();
   const { default_target_language, ollama_api_key, clear_ollama_api_key } = body;
-  
+
   if (default_target_language !== undefined) {
+    if (typeof default_target_language !== 'string' || !SUPPORTED_TARGET_LANGUAGES.has(default_target_language)) {
+      return c.json({ error: 'invalid_target_language' }, 400);
+    }
     await c.env.DB.prepare(`
       INSERT INTO user_basic_settings (user_id, language, updated_at)
       VALUES (?, ?, CURRENT_TIMESTAMP)
@@ -384,14 +446,14 @@ app.put('/settings/api/basic', async (c) => {
         updated_at = CURRENT_TIMESTAMP
     `).bind(uid, default_target_language).run();
   }
-  
+
   if (ollama_api_key !== undefined || clear_ollama_api_key) {
     const providers = await ensureUserProviders(c.env, uid);
     let providerToUpdate = providers.find((p: any) => isOpenAICompatibleProvider(p.provider_type));
     if (!providerToUpdate && providers.length > 0) {
       providerToUpdate = providers[0];
     }
-    
+
     if (providerToUpdate) {
       let newEncryptedKey = providerToUpdate.encrypted_api_key as string | null;
       let newIv = providerToUpdate.api_key_iv as string | null;
@@ -407,7 +469,7 @@ app.put('/settings/api/basic', async (c) => {
         newIv = enc.iv;
         newKeyVersion = enc.keyVersion;
       }
-      
+
       await c.env.DB.prepare(`
         UPDATE user_api_providers SET
           base_url = CASE WHEN base_url IS NULL OR base_url = '' OR base_url = 'Default URL' THEN 'https://ollama.com/v1' ELSE base_url END,
@@ -429,7 +491,7 @@ app.put('/settings/api/basic', async (c) => {
       `).bind(crypto.randomUUID(), uid, enc.ciphertext, enc.iv, enc.keyVersion).run();
     }
   }
-  
+
   return c.json({ success: true });
 });
 
@@ -446,6 +508,7 @@ app.get('/settings/api/providers', async (c) => {
     enabled: p.enabled,
     timeout_seconds: p.timeout_seconds,
     reasoning_effort: p.reasoning_effort,
+    has_api_key: !!p.encrypted_api_key,
     created_at: p.created_at
   })));
 });
@@ -454,26 +517,32 @@ app.post('/settings/api/providers', async (c) => {
   const uid = c.get('uid') as string;
   const body = await c.req.json();
   const { display_name, provider_type, base_url, model, api_key, enabled, timeout_seconds, reasoning_effort } = body;
-  
+
   if (!display_name) return c.json({ error: 'missing_display_name', message: 'Display name is required.' }, 400);
   if (!provider_type) return c.json({ error: 'missing_provider_type', message: 'Provider type is required.' }, 400);
-  
+
   let finalBaseUrl = base_url ?? '';
   let finalModel = model ?? '';
-  
-  if (isOpenAICompatibleProvider(provider_type)) {
-    if (!base_url) return c.json({ error: 'missing_base_url', message: 'Base URL is required.' }, 400);
-    if (!model) return c.json({ error: 'missing_model', message: 'Model is required.' }, 400);
-  } else if (provider_type === 'siliconflow_free') {
+
+  if (provider_type === 'siliconflow_free') {
     finalBaseUrl = '';
     finalModel = '';
+  } else {
+    if (!base_url) return c.json({ error: 'missing_base_url', message: 'Base URL is required.' }, 400);
+    if (!model) return c.json({ error: 'missing_model', message: 'Model is required.' }, 400);
+    const validatedUrl = validateExternalProviderBaseUrl(base_url);
+    if (!validatedUrl) return c.json({ error: 'invalid_url', message: 'Base URL must be a public HTTP(S) endpoint.' }, 400);
+    finalBaseUrl = validatedUrl;
   }
-  
+  if (String(display_name).length > 120) return c.json({ error: 'display_name_too_long' }, 400);
+  if (String(finalModel).length > 255) return c.json({ error: 'model_too_long' }, 400);
+  if (api_key && String(api_key).length > 2048) return c.json({ error: 'api_key_too_long' }, 400);
+
   if (timeout_seconds !== undefined && timeout_seconds !== null && timeout_seconds !== '') {
     const t = Number(timeout_seconds);
     if (isNaN(t) || t <= 0) return c.json({ error: 'invalid_timeout', message: 'Timeout must be a positive number.' }, 400);
   }
-  
+
   if (api_key === "") {
     return c.json({ error: 'invalid_api_key', message: 'API key cannot be empty.' }, 400);
   }
@@ -481,11 +550,11 @@ app.post('/settings/api/providers', async (c) => {
   const finalTimeout = (timeout_seconds === undefined || timeout_seconds === null || timeout_seconds === '') ? null : Number(timeout_seconds);
   const finalReasoning = (reasoning_effort === undefined || reasoning_effort === '') ? null : reasoning_effort;
   const finalEnabled = enabled !== undefined ? (enabled ? 1 : 0) : 1;
-  
+
   let newEncryptedKey = null;
   let newIv = null;
   let newKeyVersion = 'v1';
-  
+
   if (api_key) {
     if (!c.env.USER_SETTINGS_SECRET) return c.json({ error: 'server_configuration_error', message: 'Missing secret' }, 500);
     const enc = await encryptApiKey(api_key, c.env.USER_SETTINGS_SECRET, `user_api_provider:${uid}`);
@@ -493,15 +562,15 @@ app.post('/settings/api/providers', async (c) => {
     newIv = enc.iv;
     newKeyVersion = enc.keyVersion;
   }
-  
+
   const existingCount = (await c.env.DB.prepare(`SELECT COUNT(*) as c FROM user_api_providers WHERE user_id = ?`).bind(uid).first())?.c as number || 0;
-  
+
   const id = crypto.randomUUID();
   await c.env.DB.prepare(`
     INSERT INTO user_api_providers (id, user_id, display_name, provider_type, base_url, model, encrypted_api_key, api_key_iv, api_key_key_version, priority, enabled, timeout_seconds, reasoning_effort)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(id, uid, display_name, provider_type, finalBaseUrl, finalModel, newEncryptedKey, newIv, newKeyVersion, existingCount + 1, finalEnabled, finalTimeout, finalReasoning).run();
-  
+
   return c.json({ id });
 });
 
@@ -510,41 +579,47 @@ app.put('/settings/api/providers/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
   const { display_name, provider_type, base_url, model, api_key, clear_api_key, enabled, timeout_seconds, reasoning_effort } = body;
-  
+
   const existing = await c.env.DB.prepare(`SELECT * FROM user_api_providers WHERE id = ? AND user_id = ?`).bind(id, uid).first();
   if (!existing) return c.json({ error: 'not_found' }, 404);
-  
+
   if (display_name !== undefined && !display_name) return c.json({ error: 'missing_display_name', message: 'Display name cannot be empty.' }, 400);
-  
+
   const targetType = provider_type !== undefined ? provider_type : existing.provider_type;
   let targetBaseUrl = base_url !== undefined ? base_url : existing.base_url;
   let targetModel = model !== undefined ? model : existing.model;
-  
-  if (isOpenAICompatibleProvider(targetType)) {
-    if (base_url !== undefined && !base_url) return c.json({ error: 'missing_base_url', message: 'Base URL is required.' }, 400);
-    if (model !== undefined && !model) return c.json({ error: 'missing_model', message: 'Model is required.' }, 400);
-  } else if (targetType === 'siliconflow_free') {
+
+  if (targetType === 'siliconflow_free') {
     targetBaseUrl = '';
     targetModel = '';
+  } else {
+    if (!targetBaseUrl) return c.json({ error: 'missing_base_url', message: 'Base URL is required.' }, 400);
+    if (!targetModel) return c.json({ error: 'missing_model', message: 'Model is required.' }, 400);
+    const validatedUrl = validateExternalProviderBaseUrl(targetBaseUrl);
+    if (!validatedUrl) return c.json({ error: 'invalid_url', message: 'Base URL must be a public HTTP(S) endpoint.' }, 400);
+    targetBaseUrl = validatedUrl;
   }
-  
+  if (display_name !== undefined && String(display_name).length > 120) return c.json({ error: 'display_name_too_long' }, 400);
+  if (String(targetModel).length > 255) return c.json({ error: 'model_too_long' }, 400);
+  if (api_key && String(api_key).length > 2048) return c.json({ error: 'api_key_too_long' }, 400);
+
   if (timeout_seconds !== undefined && timeout_seconds !== null && timeout_seconds !== '') {
     const t = Number(timeout_seconds);
     if (isNaN(t) || t <= 0) return c.json({ error: 'invalid_timeout', message: 'Timeout must be a positive number.' }, 400);
   }
-  
+
   if (api_key === "") {
     return c.json({ error: 'invalid_api_key', message: 'API Key cannot be empty. Use clear_api_key to remove.' }, 400);
   }
-  
+
   const finalTimeout = (timeout_seconds === undefined) ? existing.timeout_seconds : (timeout_seconds === null || timeout_seconds === '' ? null : Number(timeout_seconds));
   const finalReasoning = (reasoning_effort === undefined) ? existing.reasoning_effort : (reasoning_effort === '' ? null : reasoning_effort);
   const finalEnabled = (enabled === undefined) ? existing.enabled : (enabled ? 1 : 0);
-  
+
   let newEncryptedKey = existing.encrypted_api_key as string | null;
   let newIv = existing.api_key_iv as string | null;
   let newKeyVersion = existing.api_key_key_version as string;
-  
+
   if (clear_api_key) {
     newEncryptedKey = null;
     newIv = null;
@@ -555,7 +630,7 @@ app.put('/settings/api/providers/:id', async (c) => {
     newIv = enc.iv;
     newKeyVersion = enc.keyVersion;
   }
-  
+
   await c.env.DB.prepare(`
     UPDATE user_api_providers SET
       display_name = coalesce(?, display_name),
@@ -584,7 +659,7 @@ app.put('/settings/api/providers/:id', async (c) => {
     id,
     uid
   ).run();
-  
+
   return c.json({ success: true });
 });
 
@@ -598,10 +673,10 @@ app.delete('/settings/api/providers/:id', async (c) => {
 app.post('/settings/api/providers/:id/test', async (c) => {
   const uid = c.get('uid') as string;
   const id = c.req.param('id');
-  
+
   const provider = await c.env.DB.prepare(`SELECT * FROM user_api_providers WHERE id = ? AND user_id = ?`).bind(id, uid).first();
   if (!provider) return c.json({ error: 'not_found' }, 404);
-  
+
   let apiKey = '';
   if (provider.encrypted_api_key && provider.api_key_iv && c.env.USER_SETTINGS_SECRET) {
     try {
@@ -614,12 +689,12 @@ app.post('/settings/api/providers/:id/test', async (c) => {
     } catch (e) {
       return c.json({ ok: false, error: 'decryption_failed' }, 400);
     }
-    
+
     if (!apiKey) {
       return c.json({ error: 'missing_api_key', message: 'API key is not set.' }, 400);
     }
   }
-  
+
   if (provider.provider_type === 'siliconflow_free') {
     return c.json({ ok: true });
   }
@@ -628,38 +703,35 @@ app.post('/settings/api/providers/:id/test', async (c) => {
     return c.json({ error: 'missing_base_url', message: 'Base URL is not set.' }, 400);
   }
 
-  let testUrl = provider.base_url as string;
-  testUrl = testUrl.replace(/\/$/, '') + '/models';
-  
-  try {
-    new URL(testUrl);
-  } catch (e) {
-    return c.json({ error: 'invalid_url', message: 'Invalid Base URL.' }, 400);
+  const validatedBaseUrl = validateExternalProviderBaseUrl(provider.base_url);
+  if (!validatedBaseUrl) {
+    return c.json({ error: 'invalid_url', message: 'Base URL must be a public HTTP(S) endpoint.' }, 400);
   }
-  
+  const testUrl = validatedBaseUrl + '/models';
+
   try {
     const headers: Record<string, string> = {};
     if (apiKey) {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
-    
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
-    
+
     const resp = await fetch(testUrl, {
       method: 'GET',
       headers,
       signal: controller.signal,
       redirect: 'manual'
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     if (resp.status >= 300 && resp.status < 400) {
       const location = resp.headers.get('Location');
       return c.json({ error: 'redirect', message: `Base URL redirects. Please use the final API URL: ${location || 'unknown'}` }, 400);
     }
-    
+
     if (resp.ok) {
       return c.json({ ok: true });
     } else {
@@ -675,8 +747,8 @@ app.post('/settings/api/providers/reorder', async (c) => {
   const body = await c.req.json();
   const { provider_ids } = body;
   if (!Array.isArray(provider_ids)) return c.json({ error: 'invalid_format' }, 400);
-  
-  const stmts = provider_ids.map((id, index) => 
+
+  const stmts = provider_ids.map((id, index) =>
     c.env.DB.prepare(`UPDATE user_api_providers SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`).bind(index + 1, id, uid)
   );
   if (stmts.length > 0) {
@@ -706,33 +778,25 @@ app.put('/settings/llm', async (c) => {
   const uid = c.get('uid') as string;
   const body = await c.req.json();
   const { llm_source, llm_base_url, llm_model, api_key, clear_api_key } = body;
-  
+
   if (llm_source && !['openai_compatible', 'openaicompatible', 'openai', 'gemini', 'deepseek'].includes(llm_source)) {
     return c.json({ error: 'invalid_source' }, 400);
   }
-  if (llm_base_url) {
-    try {
-      const url = new URL(llm_base_url);
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error();
-      if (['localhost', '127.0.0.1'].includes(url.hostname)) return c.json({ error: 'invalid_url' }, 400);
-      const isLocalIP = /^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.|169\.254\.)/.test(url.hostname);
-      if (isLocalIP) return c.json({ error: 'invalid_url' }, 400);
-    } catch (e) {
-      return c.json({ error: 'invalid_url' }, 400);
-    }
+  if (llm_base_url && !validateExternalProviderBaseUrl(llm_base_url)) {
+    return c.json({ error: 'invalid_url' }, 400);
   }
   if (llm_model && llm_model.length > 255) return c.json({ error: 'model_too_long' }, 400);
   if (api_key && api_key.length > 2048) return c.json({ error: 'api_key_too_long' }, 400);
-  
+
   const existing = await c.env.DB.prepare(`SELECT user_id, llm_source, llm_base_url, llm_model, encrypted_api_key, api_key_iv FROM user_llm_settings WHERE user_id = ?`).bind(uid).first();
   if (api_key === "") {
     return c.json({ error: 'invalid_api_key', message: 'Use clear_api_key to remove' }, 400);
   }
-  
+
   let newEncryptedKey = existing?.encrypted_api_key || null;
   let newIv = existing?.api_key_iv || null;
   let newKeyVersion = existing?.api_key_key_version || 'v1';
-  
+
   if (clear_api_key) {
     newEncryptedKey = null;
     newIv = null;
@@ -743,11 +807,11 @@ app.put('/settings/llm', async (c) => {
     newIv = enc.iv;
     newKeyVersion = enc.keyVersion;
   }
-  
+
   const finalSource = llm_source ?? existing?.llm_source ?? 'openai_compatible';
   const finalUrl = llm_base_url ?? existing?.llm_base_url ?? '';
   const finalModel = llm_model ?? existing?.llm_model ?? '';
-  
+
   await c.env.DB.prepare(`
     INSERT INTO user_llm_settings (user_id, llm_source, llm_base_url, llm_model, encrypted_api_key, api_key_iv, api_key_key_version, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -760,7 +824,7 @@ app.put('/settings/llm', async (c) => {
       api_key_key_version = excluded.api_key_key_version,
       updated_at = CURRENT_TIMESTAMP
   `).bind(uid, finalSource, finalUrl, finalModel, newEncryptedKey, newIv, newKeyVersion).run();
-  
+
   return c.json({ success: true });
 });
 
@@ -770,7 +834,7 @@ app.get('/limits', async (c) => {
   const authHeader = c.req.header('Authorization');
   let uid: string | null = null;
   let ownerType = 'public';
-  
+
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
     try {
@@ -789,7 +853,7 @@ app.get('/limits', async (c) => {
   let subjectHash = '';
   if (isGuest) {
     const ip = c.req.header('cf-connecting-ip') || 'unknown';
-    subjectHash = await sha256Hex(ip + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
+    subjectHash = await sha256Hex(ip + securitySecret(c.env, 'rate-limit'));
   } else {
     subjectHash = uid || 'unknown';
   }
@@ -814,7 +878,7 @@ app.post('/jobs', async (c) => {
     const authHeader = c.req.header('Authorization');
     let uid: string | null = null;
     let ownerType = 'public';
-    
+
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
       try {
@@ -837,7 +901,7 @@ app.post('/jobs', async (c) => {
     let publicExpiresAt = null;
     let fileSizeBytes = file.size;
     let turnstileVerified = 0;
-    
+
     let llm_source = 'openai_compatible';
     let llm_base_url = '';
     let llm_model = '';
@@ -848,6 +912,10 @@ app.post('/jobs', async (c) => {
 
     const apiKey = formData.get('api_key') as string;
     const saveApiKey = formData.get('save_api_key_to_settings') === 'true';
+    const rawTargetLanguage = formData.get('target_language');
+    const targetLanguage = typeof rawTargetLanguage === 'string' && SUPPORTED_TARGET_LANGUAGES.has(rawTargetLanguage)
+      ? rawTargetLanguage
+      : 'ja';
 
     const isGuest = ownerType === 'public';
     const MAX_PDF_SIZE = isGuest ? 5 * 1024 * 1024 : 20 * 1024 * 1024;
@@ -855,13 +923,36 @@ app.post('/jobs', async (c) => {
     const limitScope = isGuest ? 'public' : 'authenticated';
 
     if (file.size > MAX_PDF_SIZE) {
-      return c.json({ error: isGuest ? "PDF file is too large. Guest users can upload up to 5 MiB." : "PDF file is too large. Logged-in users can upload up to 20 MiB." }, 413);
+      return c.json({
+        error: 'file_too_large',
+        message: isGuest ? "PDF file is too large. Guest users can upload up to 5 MiB." : "PDF file is too large. Logged-in users can upload up to 20 MiB."
+      }, 413);
+    }
+
+    const headerBytes = new Uint8Array(await file.slice(0, 1024).arrayBuffer());
+    const pdfSignature = new TextEncoder().encode('%PDF-');
+    let hasPdfSignature = false;
+    for (let i = 0; i <= headerBytes.length - pdfSignature.length; i++) {
+      let matches = true;
+      for (let j = 0; j < pdfSignature.length; j++) {
+        if (headerBytes[i + j] !== pdfSignature[j]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) {
+        hasPdfSignature = true;
+        break;
+      }
+    }
+    if (!hasPdfSignature) {
+      return c.json({ error: 'invalid_pdf', message: 'The uploaded file is not a valid PDF.' }, 400);
     }
 
     const ip = c.req.header('cf-connecting-ip') || 'unknown';
     let subjectHash = '';
     if (isGuest) {
-      subjectHash = await sha256Hex(ip + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
+      subjectHash = await sha256Hex(ip + securitySecret(c.env, 'rate-limit'));
     } else {
       subjectHash = uid || 'unknown';
     }
@@ -872,7 +963,8 @@ app.post('/jobs', async (c) => {
 
     if (jobsUsedToday >= MAX_JOBS_PER_DAY) {
       return c.json({
-        error: `Daily job limit exceeded. ${isGuest ? 'Guest' : 'Logged-in'} users can create up to ${MAX_JOBS_PER_DAY} jobs per day.`,
+        error: 'rate_limit_exceeded',
+        message: `Daily job limit exceeded. ${isGuest ? 'Guest' : 'Logged-in'} users can create up to ${MAX_JOBS_PER_DAY} jobs per day.`,
         limit: MAX_JOBS_PER_DAY,
         remaining: 0,
         reset_hint: "Resets daily."
@@ -883,37 +975,42 @@ app.post('/jobs', async (c) => {
       if (saveApiKey) {
         return c.json({ error: 'Sign in to save API key to settings.' }, 400);
       }
-      
+
       const turnstileToken = formData.get('turnstile') as string;
       const verified = await verifyTurnstile(turnstileToken, c.env.TURNSTILE_SECRET_KEY, c.env.TURNSTILE_TEST_BYPASS);
       if (!verified) return c.json({ error: 'turnstile_failed', message: 'Turnstile verification failed' }, 403);
       turnstileVerified = 1;
-      
+
       publicIpHash = subjectHash;
       if (!await checkRateLimit(c.env.DB, `ip:${publicIpHash}`, 3, 24 * 60 * 60 * 1000)) {
          return c.json({ error: 'rate_limited', message: 'Too many requests from this IP' }, 429);
       }
-      
-      const clientId = formData.get('client_id') as string || 'unknown';
-      publicClientHash = await sha256Hex(clientId + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
+
+      const rawClientId = formData.get('client_id');
+      const clientId = typeof rawClientId === 'string' && rawClientId.trim()
+        ? rawClientId.trim().slice(0, 256)
+        : `ip:${publicIpHash}`;
+      publicClientHash = await sha256Hex(clientId + securitySecret(c.env, 'rate-limit'));
       if (!await checkRateLimit(c.env.DB, `client:${publicClientHash}`, 1, 24 * 60 * 60 * 1000)) {
          return c.json({ error: 'rate_limited', message: 'Too many requests from this client' }, 429);
       }
-      
+
       receipt = crypto.randomUUID();
-      publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt);
-      
+      publicReceiptHash = await hmacSha256Hex(securitySecret(c.env, 'receipt'), receipt);
+
       const now = new Date();
       publicExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
     }
 
-    
+
     let providersToSnapshot: any[] = [];
 
     if (apiKey) {
       llm_credential_mode = 'request_once';
-      // User provided a one-off API key
-      const tempId = crypto.randomUUID();
+      // User provided a one-off API key. It must always be encrypted at rest.
+      if (!c.env.USER_SETTINGS_SECRET) {
+        return c.json({ error: 'server_encryption_not_configured' }, 503);
+      }
       let snapshotEncKey = null;
       let snapshotIv = null;
       let snapshotKeyVersion = 'v1';
@@ -944,8 +1041,9 @@ app.post('/jobs', async (c) => {
           return c.json({ error: 'internal_error', message: 'Failed to encrypt API key' }, 500);
         }
       }
-      
-      // Get llm_source, model from somewhere, default to openai_compatible
+
+      // Reuse the user's first configured endpoint, or the server's public endpoint
+      // for guest one-off credentials. An API key without an endpoint/model is unusable.
       let source = 'openai_compatible';
       let baseUrl = '';
       let model = '';
@@ -956,8 +1054,15 @@ app.post('/jobs', async (c) => {
               baseUrl = existing[0].base_url;
               model = existing[0].model;
           }
+      } else {
+          source = c.env.PUBLIC_FALLBACK_LLM_SOURCE || source;
+          baseUrl = c.env.PUBLIC_FALLBACK_LLM_BASE_URL || '';
+          model = c.env.PUBLIC_FALLBACK_LLM_MODEL || '';
       }
-      
+      if (source !== 'siliconflow_free' && (!baseUrl || !model)) {
+        return c.json({ error: 'llm_endpoint_not_configured', message: 'No API endpoint/model is configured for this one-off key.' }, 503);
+      }
+
       providersToSnapshot.push({
         display_name: 'Custom',
         provider_type: source,
@@ -993,7 +1098,7 @@ app.post('/jobs', async (c) => {
         if (enabledProviders.length === 0) {
           return c.json({ error: 'api_key_required', message: 'Ollama API key is required. Please set it in Settings.' }, 400);
         }
-        
+
         // Re-encrypt api keys for job snapshot
         for (const p of enabledProviders as any[]) {
             let encKey = p.encrypted_api_key;
@@ -1002,7 +1107,7 @@ app.post('/jobs', async (c) => {
             let legacyEncKey = p.encrypted_api_key;
             let legacyIv = p.api_key_iv;
             let legacyKeyVersion = p.api_key_key_version;
-            
+
             if (p.encrypted_api_key && p.api_key_iv && c.env.USER_SETTINGS_SECRET) {
                 try {
                   const plainKey = await decryptApiKey(
@@ -1033,7 +1138,7 @@ app.post('/jobs', async (c) => {
                   return c.json({ error: 'internal_error', message: 'Failed to snapshot settings' }, 500);
                 }
             }
-            
+
             providersToSnapshot.push({
                 display_name: p.display_name,
                 provider_type: p.provider_type,
@@ -1071,7 +1176,7 @@ app.post('/jobs', async (c) => {
         let legacyEncKey = null;
         let legacyIv = null;
         let legacyKeyVersion = 'v1';
-        
+
         if (fallbackKey && c.env.USER_SETTINGS_SECRET) {
           try {
             const enc = await encryptApiKey(fallbackKey, c.env.USER_SETTINGS_SECRET, `job_api_provider:${id}`);
@@ -1087,7 +1192,7 @@ app.post('/jobs', async (c) => {
             return c.json({ error: 'internal_error', message: 'Failed to encrypt fallback API key' }, 500);
           }
         }
-        
+
         providersToSnapshot.push({
             display_name: 'Public Fallback',
             provider_type: source,
@@ -1105,7 +1210,7 @@ app.post('/jobs', async (c) => {
         });
       }
     }
-    
+
     if (providersToSnapshot.length > 0) {
         const first = providersToSnapshot[0];
         llm_source = first.provider_type;
@@ -1123,19 +1228,19 @@ app.post('/jobs', async (c) => {
         llm_source, llm_base_url, llm_model,
         encrypted_api_key_snapshot, api_key_snapshot_iv, api_key_key_version,
         owner_type, public_receipt_hash, public_client_hash, public_ip_hash,
-        public_expires_at, file_size_bytes, turnstile_verified, llm_credential_mode
-      ) VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        public_expires_at, file_size_bytes, turnstile_verified, llm_credential_mode, target_language
+      ) VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       id, uid || 'public_user', file.name,
       llm_source, llm_base_url, llm_model,
       encrypted_api_key_snapshot, api_key_snapshot_iv, api_key_key_version,
       ownerType, publicReceiptHash, publicClientHash, publicIpHash,
-      publicExpiresAt, fileSizeBytes, turnstileVerified, llm_credential_mode
+      publicExpiresAt, fileSizeBytes, turnstileVerified, llm_credential_mode, targetLanguage
     ).run()
-    
+
     // Insert into job_api_provider_snapshots
     if (providersToSnapshot.length > 0) {
-        const stmts = providersToSnapshot.map(p => 
+        const stmts = providersToSnapshot.map(p =>
             c.env.DB.prepare(`
                 INSERT INTO job_api_provider_snapshots (id, job_id, display_name, provider_type, base_url, model, encrypted_api_key, api_key_iv, api_key_key_version, priority, timeout_seconds, reasoning_effort)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1143,15 +1248,32 @@ app.post('/jobs', async (c) => {
         );
         await c.env.DB.batch(stmts);
     }
-    
-    await c.env.DB.prepare(
+
+    // Reserve the daily quota atomically. The earlier SELECT is only a fast-path;
+    // this conditional UPSERT closes the race between concurrent uploads.
+    const quotaReservation = await c.env.DB.prepare(
       `INSERT INTO usage_limits (scope, subject_hash, day, jobs_created, bytes_uploaded, updated_at)
        VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(scope, subject_hash, day) DO UPDATE SET
-       jobs_created = jobs_created + 1,
-       bytes_uploaded = bytes_uploaded + excluded.bytes_uploaded,
-       updated_at = CURRENT_TIMESTAMP`
-    ).bind(limitScope, subjectHash, todayDate, fileSizeBytes).run();
+         jobs_created = usage_limits.jobs_created + 1,
+         bytes_uploaded = usage_limits.bytes_uploaded + excluded.bytes_uploaded,
+         updated_at = CURRENT_TIMESTAMP
+       WHERE usage_limits.jobs_created < ?`
+    ).bind(limitScope, subjectHash, todayDate, fileSizeBytes, MAX_JOBS_PER_DAY).run();
+
+    if (quotaReservation.meta.changes !== 1) {
+      await c.env.DB.batch([
+        c.env.DB.prepare(`DELETE FROM job_api_provider_snapshots WHERE job_id = ?`).bind(id),
+        c.env.DB.prepare(`DELETE FROM jobs WHERE id = ?`).bind(id),
+      ]);
+      return c.json({
+        error: 'rate_limit_exceeded',
+        message: `Daily job limit exceeded. ${isGuest ? 'Guest' : 'Logged-in'} users can create up to ${MAX_JOBS_PER_DAY} jobs per day.`,
+        limit: MAX_JOBS_PER_DAY,
+        remaining: 0,
+        reset_hint: 'Resets daily.'
+      }, 429);
+    }
 
     console.log("POST /jobs: created job", id, "owner_type:", ownerType)
 
@@ -1171,8 +1293,22 @@ app.post('/jobs', async (c) => {
         statusText: resp.statusText,
         body: privateBody,
       });
-      // Update D1 to failed if upload fails
-      await c.env.DB.prepare(`UPDATE jobs SET status = 'failed', error_message = 'Upload failed' WHERE id = ?`).bind(id).run()
+      // Update D1 to failed if upload fails, refund the quota reservation, and remove partial input.
+      await c.env.DB.batch([
+        c.env.DB.prepare(`UPDATE jobs SET status = 'failed', error_message = 'Upload failed' WHERE id = ?`).bind(id),
+        c.env.DB.prepare(`
+          UPDATE usage_limits
+          SET jobs_created = MAX(0, jobs_created - 1),
+              bytes_uploaded = MAX(0, bytes_uploaded - ?),
+              updated_at = CURRENT_TIMESTAMP
+          WHERE scope = ? AND subject_hash = ? AND day = ?
+        `).bind(fileSizeBytes, limitScope, subjectHash, todayDate),
+      ])
+      try {
+        await fetchPrivateApi(c.env, `/internal/files/${id}/delete`, { method: 'POST' });
+      } catch (cleanupError) {
+        console.error("POST /jobs: failed to clean partial upload", cleanupError);
+      }
       return c.json({ error: 'private_api_upload_failed', status: resp.status, body: privateBody }, 502)
     }
 
@@ -1205,6 +1341,19 @@ app.post('/jobs', async (c) => {
 app.delete('/jobs/:id', authMiddleware, async (c) => {
   const uid = c.get('uid') as string;
   const id = c.req.param('id');
+  const job = await c.env.DB.prepare(`SELECT id FROM jobs WHERE id = ? AND user_id = ? AND deleted_at IS NULL`).bind(id, uid).first();
+  if (!job) return c.json({ error: 'Not found' }, 404);
+
+  try {
+    const cleanupResp = await fetchPrivateApi(c.env, `/internal/files/${id}/delete`, { method: 'POST' });
+    if (!cleanupResp.ok) {
+      return c.json({ error: 'storage_cleanup_failed' }, 502);
+    }
+  } catch (err) {
+    console.error("DELETE /jobs/:id storage cleanup failed", err);
+    return c.json({ error: 'storage_cleanup_failed' }, 502);
+  }
+
   await c.env.DB.prepare(`UPDATE jobs SET deleted_at = datetime('now') WHERE id = ? AND user_id = ?`).bind(id, uid).run();
   return c.json({ success: true });
 });
@@ -1213,9 +1362,20 @@ app.delete('/public/jobs/:id', async (c) => {
   const id = c.req.param('id');
   const receipt = c.req.query('receipt');
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403);
-  
-  const { job, usedHash } = await getPublicJobWithLegacyFallback(c.env, id, receipt, 'id, created_at, download_expires_at');
+
+  const { job, usedHash } = await getPublicJobByReceipt(c.env, id, receipt, 'id, created_at, download_expires_at');
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403);
+
+  try {
+    const cleanupResp = await fetchPrivateApi(c.env, `/internal/files/${id}/delete`, { method: 'POST' });
+    if (!cleanupResp.ok) {
+      return c.json({ error: 'storage_cleanup_failed' }, 502);
+    }
+  } catch (err) {
+    console.error("DELETE /public/jobs/:id storage cleanup failed", err);
+    return c.json({ error: 'storage_cleanup_failed' }, 502);
+  }
+
   await c.env.DB.prepare(`UPDATE jobs SET deleted_at = datetime('now') WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ?`).bind(id, usedHash).run();
   return c.json({ success: true });
 });
@@ -1225,10 +1385,10 @@ app.get('/jobs', authMiddleware, async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, execution_metadata, active_provider_name FROM jobs WHERE user_id = ? AND deleted_at IS NULL AND created_at >= datetime('now', '-7 days') ORDER BY created_at DESC`
   ).bind(uid).all()
-  
+
   const resultsWithTokens = await Promise.all(results.map(async (job: any) => ({
     ...job,
-    view_token: await hmacSha256Hex(c.env.PDF_VIEW_TOKEN_SECRET || 'secret', `pdf-job:v1:${job.id}:${job.download_expires_at || ''}`)
+    view_token: await hmacSha256Hex(securitySecret(c.env, 'pdf-view'), `pdf-job:v1:${job.id}:${job.download_expires_at || ''}`)
   })))
   return c.json(resultsWithTokens)
 })
@@ -1238,9 +1398,9 @@ app.get('/jobs/:id', authMiddleware, async (c) => {
   const id = c.req.param('id')
   const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, execution_metadata, active_provider_name FROM jobs WHERE id = ? AND user_id = ? AND deleted_at IS NULL`).bind(id, uid).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
-  
+
   const exp = job.download_expires_at || '';
-  const view_token = await hmacSha256Hex(c.env.PDF_VIEW_TOKEN_SECRET || 'secret', `pdf-job:v1:${job.id}:${exp}`)
+  const view_token = await hmacSha256Hex(securitySecret(c.env, 'pdf-view'), `pdf-job:v1:${job.id}:${exp}`)
   if (job && typeof job.execution_metadata === 'string') { try { job.execution_metadata = JSON.parse(job.execution_metadata); } catch(e) { job.execution_metadata = null; } }
   return c.json({ ...job, view_token })
 })
@@ -1250,7 +1410,7 @@ app.get('/jobs/:id/attempts', authMiddleware, async (c) => {
   const id = c.req.param('id')
   const job = await c.env.DB.prepare(`SELECT id FROM jobs WHERE id = ? AND user_id = ? AND deleted_at IS NULL`).bind(id, uid).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
-  
+
   const attempts = await c.env.DB.prepare(`SELECT display_name, model, provider_type, total_requests, success_count, failure_count, last_http_status, last_error, rate_limit_count FROM job_api_provider_snapshots WHERE job_id = ? ORDER BY priority ASC`).bind(id).all()
   return c.json(attempts.results)
 })
@@ -1300,47 +1460,27 @@ app.get('/jobs/:id/download', authMiddleware, async (c) => {
 
 
 
-async function getPublicJobWithLegacyFallback(env: Env, id: string, receipt: string, selectFields: string) {
-  const publicReceiptHash = await hmacSha256Hex(env.RECEIPT_SIGNING_SECRET || 'secret', receipt);
-  let job = await env.DB.prepare(`SELECT ${selectFields} FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, publicReceiptHash).first();
-  let isLegacyFallback = false;
-  let usedHash = publicReceiptHash;
-
-  if (!job) {
-    const legacyPublicReceiptHash = await sha256Hex(receipt + (env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
-    const legacyJob = await env.DB.prepare(`SELECT ${selectFields} FROM jobs WHERE id = ? AND owner_type = 'public' AND public_receipt_hash = ? AND deleted_at IS NULL`).bind(id, legacyPublicReceiptHash).first();
-    
-    if (legacyJob && (legacyJob.created_at as string) < '2026-07-05T15:00:00.000Z') {
-      // Temporary compatibility for pre-2026-07-05T15 PDF view tokens.
-      // Remove after LEGACY_PDF_TOKEN_COMPAT_UNTIL.
-      const compatUntil = env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : 0;
-      if (Date.now() < compatUntil) {
-         job = legacyJob;
-         isLegacyFallback = true;
-         usedHash = legacyPublicReceiptHash;
-      }
-    }
-  }
-
-  if (isLegacyFallback && job) {
-    console.log(JSON.stringify({
-      job_id: id,
-      auth_result: 'legacy_token_accepted',
-      token_version: 'legacy-sha256',
-      created_at: job.created_at,
-      download_expires_at: job.download_expires_at
-    }));
-  }
-
-  return { job, usedHash };
+async function getPublicJobByReceipt(env: Env, id: string, receipt: string, selectFields: string) {
+  const publicReceiptHash = await hmacSha256Hex(securitySecret(env, 'receipt'), receipt);
+  const job = await env.DB.prepare(`
+    SELECT ${selectFields}
+    FROM jobs
+    WHERE id = ?
+      AND owner_type = 'public'
+      AND public_receipt_hash = ?
+      AND deleted_at IS NULL
+      AND public_expires_at IS NOT NULL
+      AND julianday(public_expires_at) > julianday('now')
+  `).bind(id, publicReceiptHash).first();
+  return { job, usedHash: publicReceiptHash };
 }
 
 app.get('/public/jobs/:id', async (c) => {
   const id = c.req.param('id')
   const receipt = c.req.query('receipt')
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
-  
-  const { job } = await getPublicJobWithLegacyFallback(c.env, id, receipt, 'id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, execution_metadata, active_provider_name')
+
+  const { job } = await getPublicJobByReceipt(c.env, id, receipt, 'id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, execution_metadata, active_provider_name')
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   if (job && typeof job.execution_metadata === 'string') { try { job.execution_metadata = JSON.parse(job.execution_metadata); } catch(e) { job.execution_metadata = null; } }
   return c.json(job)
@@ -1350,10 +1490,10 @@ app.get('/public/jobs/:id/attempts', async (c) => {
   const id = c.req.param('id')
   const receipt = c.req.query('receipt')
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
-  
-  const { job } = await getPublicJobWithLegacyFallback(c.env, id, receipt, 'id')
+
+  const { job } = await getPublicJobByReceipt(c.env, id, receipt, 'id')
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
-  
+
   const attempts = await c.env.DB.prepare(`SELECT display_name, model, provider_type, total_requests, success_count, failure_count, last_http_status, last_error, rate_limit_count FROM job_api_provider_snapshots WHERE job_id = ? ORDER BY priority ASC`).bind(id).all()
   return c.json(attempts.results)
 })
@@ -1363,7 +1503,7 @@ app.get('/public/jobs/:id/log', async (c) => {
   const receipt = c.req.query('receipt')
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
 
-  const { job } = await getPublicJobWithLegacyFallback(c.env, id, receipt, 'id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, execution_metadata, active_provider_name')
+  const { job } = await getPublicJobByReceipt(c.env, id, receipt, 'id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, execution_metadata, active_provider_name')
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
 
   const offset = c.req.query('offset') || '0'
@@ -1382,7 +1522,7 @@ app.get('/public/jobs/:id/download', async (c) => {
   const receipt = c.req.query('receipt')
   if (!receipt) return c.json({ error: 'Missing receipt' }, 403)
 
-  const { job } = await getPublicJobWithLegacyFallback(c.env, id, receipt, 'id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, execution_metadata, active_provider_name')
+  const { job } = await getPublicJobByReceipt(c.env, id, receipt, 'id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, execution_metadata, active_provider_name')
   if (!job) return c.json({ error: 'Not found or invalid receipt' }, 403)
   if (job.status !== 'completed' && job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
 
@@ -1433,73 +1573,36 @@ function contentDisposition(
 app.get('/jobs/:id/files/:kind', async (c) => {
   const id = c.req.param('id')
   const kindParam = c.req.param('kind')
-  
+
   const kind = kindParam.endsWith('.pdf') ? kindParam.replace('.pdf', '') : kindParam;
   if (kind !== 'translated' && kind !== 'bilingual') {
     return c.json({ error: 'Invalid file kind' }, 400);
   }
-  
+
   const receipt = c.req.query('receipt')
   const download = c.req.query('download') === '1'
-  
+
   if (!receipt) return c.json({ error: 'Missing receipt' }, 401)
-  
-  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, public_receipt_hash FROM jobs WHERE id = ? AND deleted_at IS NULL`).bind(id).first()
+
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, public_expires_at, owner_type, public_receipt_hash FROM jobs WHERE id = ? AND deleted_at IS NULL`).bind(id).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
-  
+
   let valid = false;
-  let isLegacyFallback = false;
   if (job.owner_type === 'public') {
-    const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt)
-    if (timingSafeEqual(job.public_receipt_hash, publicReceiptHash)) {
-      valid = true;
-    } else {
-      const legacyHash = await sha256Hex(receipt + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'))
-      if (timingSafeEqual(job.public_receipt_hash, legacyHash)) {
-        if ((job.created_at as string) < '2026-07-05T15:00:00.000Z') {
-          // Temporary compatibility for pre-2026-07-05T15 PDF view tokens.
-          // Remove after LEGACY_PDF_TOKEN_COMPAT_UNTIL.
-          const compatUntil = c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : 0;
-          if (Date.now() < compatUntil) {
-            valid = true;
-            isLegacyFallback = true;
-          }
-        }
-      }
+    const publicExpiresAt = typeof job.public_expires_at === 'string' ? Date.parse(job.public_expires_at) : NaN;
+    if (!Number.isFinite(publicExpiresAt) || Date.now() >= publicExpiresAt) {
+      return c.json({ error: 'Public job expired' }, 410);
     }
+    const publicReceiptHash = await hmacSha256Hex(securitySecret(c.env, 'receipt'), receipt);
+    valid = timingSafeEqual(job.public_receipt_hash, publicReceiptHash);
   } else if (job.owner_type === 'user' || job.owner_type === 'firebase') {
     const exp = job.download_expires_at || '';
-    const userReceiptHash = await hmacSha256Hex(c.env.PDF_VIEW_TOKEN_SECRET || 'secret', `pdf-job:v1:${job.id}:${exp}`)
-    if (timingSafeEqual(receipt, userReceiptHash)) {
-      valid = true;
-    } else {
-      const legacyToken = await sha256Hex(job.id + (c.env.PUBLIC_RATE_LIMIT_SALT || 'salt'));
-      if (timingSafeEqual(receipt, legacyToken)) {
-        if ((job.created_at as string) < '2026-07-05T15:00:00.000Z') {
-          // Temporary compatibility for pre-2026-07-05T15 PDF view tokens.
-          // Remove after LEGACY_PDF_TOKEN_COMPAT_UNTIL.
-          const compatUntil = c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL ? new Date(c.env.LEGACY_PDF_TOKEN_COMPAT_UNTIL).getTime() : 0;
-          if (Date.now() < compatUntil) {
-            valid = true;
-            isLegacyFallback = true;
-          }
-        }
-      }
-    }
+    const userReceiptHash = await hmacSha256Hex(securitySecret(c.env, 'pdf-view'), `pdf-job:v1:${job.id}:${exp}`);
+    valid = timingSafeEqual(receipt, userReceiptHash);
   }
-  
-  if (isLegacyFallback && valid) {
-    console.log(JSON.stringify({
-      job_id: job.id,
-      auth_result: 'legacy_token_accepted',
-      token_version: 'legacy-sha256',
-      created_at: job.created_at,
-      download_expires_at: job.download_expires_at
-    }));
-  }
-  
+
   if (!valid) return c.json({ error: 'Unauthorized' }, 401)
-  
+
   if (job.status !== 'completed' && job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 404)
 
   if (job.download_expires_at) {
@@ -1528,7 +1631,7 @@ app.get('/jobs/:id/files/:kind', async (c) => {
   const resp = await fetchPrivateApi(c.env, `/internal/jobs/${id}/download?filename=${encodeURIComponent(newFilename)}&type=${encodeURIComponent(type)}`, {
     headers: initHeaders
   })
-  
+
   if (resp.status === 409 || resp.status === 404) {
       return c.json({ error: 'File not found' }, 404)
   }
@@ -1543,7 +1646,7 @@ app.get('/jobs/:id/files/:kind', async (c) => {
   newHeaders.set('Cache-Control', 'private, no-store')
   newHeaders.set('X-Content-Type-Options', 'nosniff')
   newHeaders.set('Referrer-Policy', 'no-referrer')
-  
+
   return new Response(resp.body, {
     status: resp.status,
     headers: newHeaders
@@ -1555,7 +1658,8 @@ app.get('/jobs/:id/files/:kind', async (c) => {
 
 app.use('/agent/*', async (c, next) => {
   const token = c.req.header('Authorization')
-  if (!token || token !== `Bearer ${c.env.AGENT_TOKEN}`) {
+  const agentToken = c.env.AGENT_TOKEN
+  if (!agentToken || !token || !timingSafeEqual(token, `Bearer ${agentToken}`)) {
     return c.json({ error: 'Unauthorized agent' }, 401)
   }
   await next()
@@ -1563,10 +1667,37 @@ app.use('/agent/*', async (c, next) => {
 
 app.post('/agent/claim', async (c) => {
   const body = await c.req.json()
-  const workerId = body.worker_id || 'default-worker'
-  
-  // Find a queued job
-  const job = await c.env.DB.prepare(`SELECT id, original_filename, llm_source, llm_base_url, llm_model, encrypted_api_key_snapshot, api_key_snapshot_iv, owner_type, public_client_hash, public_ip_hash, public_expires_at, file_size_bytes, turnstile_verified, llm_credential_mode FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1`).first()
+  const workerId = typeof body.worker_id === 'string' && body.worker_id.trim()
+    ? body.worker_id.trim().slice(0, 128)
+    : 'default-worker'
+
+  // Treat claimed_at as a lease heartbeat. Recover work after an agent crash/hang,
+  // while never resurrecting already-expired public jobs.
+  await c.env.DB.batch([
+    c.env.DB.prepare(`
+      UPDATE jobs
+      SET status = 'queued', worker_id = NULL, claimed_at = NULL, started_at = NULL,
+          progress_phase = 'requeued', progress_message = 'Recovered after agent lease timeout'
+      WHERE status = 'running'
+        AND deleted_at IS NULL
+        AND claimed_at IS NOT NULL
+        AND julianday(claimed_at) <= julianday('now', '-2 hours')
+        AND (owner_type <> 'public' OR (public_expires_at IS NOT NULL AND julianday(public_expires_at) > julianday('now')))
+    `),
+    c.env.DB.prepare(`
+      UPDATE jobs
+      SET status = 'failed', finished_at = CURRENT_TIMESTAMP,
+          progress_phase = 'failed', error_message = 'Public job expired before processing completed'
+      WHERE owner_type = 'public'
+        AND status IN ('queued', 'running')
+        AND deleted_at IS NULL
+        AND public_expires_at IS NOT NULL
+        AND julianday(public_expires_at) <= julianday('now')
+    `)
+  ])
+
+  // Find a queued, non-expired job.
+  const job = await c.env.DB.prepare(`SELECT id, original_filename, llm_source, llm_base_url, llm_model, encrypted_api_key_snapshot, api_key_snapshot_iv, owner_type, public_client_hash, public_ip_hash, public_expires_at, file_size_bytes, turnstile_verified, llm_credential_mode, target_language FROM jobs WHERE status = 'queued' AND deleted_at IS NULL AND (owner_type <> 'public' OR (public_expires_at IS NOT NULL AND julianday(public_expires_at) > julianday('now'))) ORDER BY created_at ASC LIMIT 1`).first()
   if (!job) return c.json({ job: null })
 
   let decryptedApiKey = null;
@@ -1631,6 +1762,7 @@ app.post('/agent/claim', async (c) => {
           model: job.llm_model,
           api_key: decryptedApiKey
         },
+        lang_out: job.target_language || 'ja',
         provider_snapshots
       }
     })
@@ -1640,16 +1772,16 @@ app.post('/agent/claim', async (c) => {
 
 app.post('/agent/jobs/:id/provider_stats', async (c) => {
   const id = c.req.param('id')
-  
+
   // Check if job exists
-  const jobExists = await c.env.DB.prepare(`SELECT id FROM conversion_jobs WHERE id = ?`).bind(id).first();
+  const jobExists = await c.env.DB.prepare(`SELECT id FROM jobs WHERE id = ? AND deleted_at IS NULL`).bind(id).first();
   if (!jobExists) {
     return c.json({ error: 'job_not_found' }, 404);
   }
-  
+
   const body = await c.req.json()
   const stats = body.stats;
-  
+
   if (!Array.isArray(stats)) {
     return c.json({ error: 'invalid_format' }, 400);
   }
@@ -1668,10 +1800,10 @@ app.post('/agent/jobs/:id/provider_stats', async (c) => {
     return safeErr;
   };
 
-  const stmts = stats.map((stat: any) => 
+  const stmts = stats.map((stat: any) =>
     c.env.DB.prepare(`
-      UPDATE job_api_provider_snapshots 
-      SET 
+      UPDATE job_api_provider_snapshots
+      SET
         total_requests = ?,
         success_count = ?,
         failure_count = ?,
@@ -1694,7 +1826,7 @@ app.post('/agent/jobs/:id/provider_stats', async (c) => {
   if (stmts.length > 0) {
     await c.env.DB.batch(stmts);
   }
-  
+
   return c.json({ ok: true })
 })
 
@@ -1702,18 +1834,18 @@ app.post('/agent/jobs/:id/attempts', async (c) => {
   const id = c.req.param('id')
   const body = await c.req.json()
   const { provider_snapshot_id, provider_order, display_name, model, status, http_status, error_message, started_at, finished_at } = body;
-  
+
   const snap_id = provider_snapshot_id || '';
   const existing = await c.env.DB.prepare(`SELECT id FROM job_api_provider_attempts WHERE job_id = ? AND snapshot_id = ?`).bind(id, snap_id).first();
-  
+
   let final_finished_at = finished_at || null;
   if (!final_finished_at && (status === 'completed' || status === 'failed')) {
     final_finished_at = new Date().toISOString();
   }
-  
+
   if (existing) {
     await c.env.DB.prepare(`
-      UPDATE job_api_provider_attempts 
+      UPDATE job_api_provider_attempts
       SET status = ?, http_status = ?, error_message = ?, finished_at = coalesce(?, finished_at)
       WHERE id = ?
     `).bind(status || 'running', http_status || null, error_message || null, final_finished_at, existing.id).run();
@@ -1723,7 +1855,7 @@ app.post('/agent/jobs/:id/attempts', async (c) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, coalesce(?, CURRENT_TIMESTAMP), ?)
     `).bind(crypto.randomUUID(), id, snap_id, provider_order || 1, display_name || '', model || '', status || 'running', http_status || null, error_message || null, started_at || null, final_finished_at).run();
   }
-  
+
   return c.json({ ok: true })
 })
 
@@ -1731,7 +1863,7 @@ app.post('/agent/jobs/:id/progress', async (c) => {
   const id = c.req.param('id')
   const body = await c.req.json()
   const now = new Date().toISOString()
-  
+
   let status = body.status || 'running';
   if (status === 'succeeded') status = 'completed';
 
@@ -1743,7 +1875,7 @@ app.post('/agent/jobs/:id/progress', async (c) => {
   if (body.execution_metadata) {
     try {
       const meta = typeof body.execution_metadata === 'string' ? JSON.parse(body.execution_metadata) : body.execution_metadata;
-      
+
       const parsed = {
         provider: String(meta.provider || '').substring(0, 50),
         engine: String(meta.engine || '').substring(0, 50),
@@ -1751,7 +1883,7 @@ app.post('/agent/jobs/:id/progress', async (c) => {
         router_used: Boolean(meta.router_used),
         backend_git_sha: String(meta.backend_git_sha || '').substring(0, 50)
       };
-      
+
       executionMetadata = JSON.stringify(parsed);
       if (executionMetadata.length > 1024) executionMetadata = null;
     } catch(e) {
@@ -1765,7 +1897,7 @@ app.post('/agent/jobs/:id/progress', async (c) => {
 
   const oldPercent = (existing.progress_percent as number) ?? 0;
   let newPercent = body.progress_percent ?? oldPercent;
-  
+
   newPercent = Math.max(0, Math.min(100, Math.round(newPercent)));
 
   if (status === 'completed') {
@@ -1785,8 +1917,8 @@ app.post('/agent/jobs/:id/progress', async (c) => {
     ).bind(now, expiresAt.toISOString(), newPercent, phase, message, logTail, executionMetadata, activeProviderName, id).run()
   } else {
     await c.env.DB.prepare(
-      `UPDATE jobs SET status = 'running', progress_percent = ?, progress_phase = ?, progress_message = ?, log_tail = ?, execution_metadata = coalesce(?, execution_metadata), active_provider_name = coalesce(?, active_provider_name) WHERE id = ? AND status = 'running'`
-    ).bind(newPercent, phase, message, logTail, executionMetadata, activeProviderName, id).run()
+      `UPDATE jobs SET status = 'running', claimed_at = ?, progress_percent = ?, progress_phase = ?, progress_message = ?, log_tail = ?, execution_metadata = coalesce(?, execution_metadata), active_provider_name = coalesce(?, active_provider_name) WHERE id = ? AND status = 'running'`
+    ).bind(now, newPercent, phase, message, logTail, executionMetadata, activeProviderName, id).run()
   }
   return c.json({ ok: true })
 })
@@ -1795,10 +1927,10 @@ app.post('/agent/jobs/:id/succeeded', async (c) => {
   const id = c.req.param('id')
   const now = new Date()
   const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-  
-  let body = {};
+
+  let body: Record<string, any> = {};
   try { body = await c.req.json(); } catch(e) {}
-  
+
   let executionMetadata = null;
   if (body.execution_metadata) {
     try {
@@ -1829,10 +1961,10 @@ app.post('/agent/jobs/:id/succeeded', async (c) => {
 app.post('/agent/jobs/:id/failed', async (c) => {
   const id = c.req.param('id')
   const now = new Date()
-  
-  let body = {};
+
+  let body: Record<string, any> = {};
   try { body = await c.req.json(); } catch(e) {}
-  
+
   let executionMetadata = null;
   if (body.execution_metadata) {
     try {
@@ -1866,7 +1998,8 @@ app.post('/agent/heartbeat', async (c) => {
 
 app.get('/admin/pc-api-health', async (c) => {
   const token = c.req.header('Authorization');
-  if (!token || token !== `Bearer ${c.env.AGENT_TOKEN}`) {
+  const agentToken = c.env.AGENT_TOKEN;
+  if (!agentToken || !token || !timingSafeEqual(token, `Bearer ${agentToken}`)) {
     return c.json({ error: 'Unauthorized admin' }, 401);
   }
   try {
@@ -1880,7 +2013,7 @@ app.get('/admin/pc-api-health', async (c) => {
 // --- Production Smoke Test Endpoint ---
 app.post('/internal/smoke/job', async (c) => {
   const token = c.req.header('X-Smoke-Token');
-  if (!c.env.SMOKE_TOKEN || !token || token !== c.env.SMOKE_TOKEN) {
+  if (!c.env.SMOKE_TOKEN || !token || !timingSafeEqual(token, c.env.SMOKE_TOKEN)) {
     return c.json({ error: 'Not found' }, 404);
   }
   console.log("smoke_auth_ok");
@@ -1892,7 +2025,7 @@ app.post('/internal/smoke/job', async (c) => {
     if (!file) return c.json({ error: 'No pdf file' }, 400);
 
     const receipt = crypto.randomUUID();
-    const publicReceiptHash = await hmacSha256Hex(c.env.RECEIPT_SIGNING_SECRET || 'secret', receipt);
+    const publicReceiptHash = await hmacSha256Hex(securitySecret(c.env, 'receipt'), receipt);
 
     const now = new Date();
     now.setHours(now.getHours() + 1); // 1 hour expiry for smoke job

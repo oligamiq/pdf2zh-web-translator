@@ -3,7 +3,8 @@
   "version": "0.2.1",
   "private": true,
   "scripts": {
-    "build": "echo 'No build required for pc-api Python service'",
-    "deploy": "echo 'Deploy via gcloud run or similar'"
+    "build": "go test -run '^$' ./...",
+    "deploy": "echo 'Deploy via gcloud run or similar'",
+    "test": "go test ./..."
   }
 }

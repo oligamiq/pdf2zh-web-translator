@@ -41,7 +41,7 @@ export async function setupDefaultApiMocks(page: Page) {
 
   await page.route('**/settings/api/basic**', async route => {
     if (route.request().resourceType() === 'document') return route.fallback();
-    return route.fulfill({ json: { defaultTargetLanguage: 'ja' } });
+    return route.fulfill({ json: { default_target_language: 'ja', ollama: { has_api_key: false, api_key_last4: null } } });
   });
 
   await page.route('**/jobs**', async route => {

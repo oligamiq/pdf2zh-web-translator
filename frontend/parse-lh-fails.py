@@ -1,6 +1,7 @@
 import json
+from pathlib import Path
 
-with open('/srv/pdf2zh-web/v2/frontend/lighthouse.json') as f:
+with open(Path(__file__).with_name('lighthouse.json')) as f:
     data = json.load(f)
 
 for k, v in data['audits'].items():

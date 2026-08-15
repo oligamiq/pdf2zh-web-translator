@@ -23,7 +23,7 @@ PC_API_HOST_URL="http://127.0.0.1:${PC_API_PORT}"
 
 TMP_ENV="$TMP_DIR/env"
 TMP_COMPOSE_OVERRIDE="$TMP_DIR/docker-compose.override.yml"
-TMP_WRANGLER="$V2_DIR/worker/wrangler.e2e.toml"
+TMP_WRANGLER="$TMP_DIR/wrangler.e2e.toml"
 
 grep -v -E '^(PC_AGENT_MODE|WORKER_API_BASE_URL_MOCK|AUTH_MODE|PROXY_SECRET|AGENT_TOKEN)=' "$ENV_FILE" > "$TMP_ENV"
 cat >> "$TMP_ENV" <<EOF
@@ -43,6 +43,30 @@ services:
 EOF
 
 cp "$V2_DIR/worker/wrangler.toml" "$TMP_WRANGLER"
+# Local E2E must not retain the production remote VPC binding: if it is present,
+# Wrangler opens a remote preview session instead of using PRIVATE_API_BASE_URL.
+python3 - "$TMP_WRANGLER" "$V2_DIR/worker/src/index.ts" <<'PYLOCALWRANGLER'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+entrypoint = Path(sys.argv[2]).resolve().as_posix()
+lines = p.read_text().splitlines()
+out = []
+skipping_vpc = False
+for line in lines:
+    stripped = line.strip()
+    if stripped.startswith('main ='):
+        line = f'main = "{entrypoint}"'
+        stripped = line.strip()
+    if stripped == '[[vpc_services]]':
+        skipping_vpc = True
+        continue
+    if skipping_vpc and stripped.startswith('['):
+        skipping_vpc = False
+    if not skipping_vpc:
+        out.append(line)
+p.write_text('\n'.join(out) + '\n')
+PYLOCALWRANGLER
 cat >> "$TMP_WRANGLER" <<EOF
 
 PRIVATE_API_BASE_URL = "${PC_API_HOST_URL}"
@@ -69,7 +93,9 @@ sleep 5
 
 cleanup() {
   echo "Cleaning up..."
-  kill $WORKER_PID || true
+  kill "$WORKER_PID" 2>/dev/null || true
+  pkill -TERM -f "wrangler.*${WORKER_PORT}" 2>/dev/null || true
+  pkill -TERM -f "workerd.*${WORKER_PORT}" 2>/dev/null || true
   sudo docker compose -p "$COMPOSE_PROJECT_NAME" down -v || true
   if [ -f "$DEV_VARS_BAK" ]; then
     cp "$DEV_VARS_BAK" "$DEV_VARS"

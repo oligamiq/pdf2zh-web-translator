@@ -28,7 +28,7 @@ npx wrangler d1 create pdf2zh-prod
 ## 6. D1 migration remote適用
 `v2/worker/wrangler.toml` に `database_id` をセットしてから実行します。
 ```bash
-cd /srv/pdf2zh-web/v2
+cd /path/to/pdf2zh-web-translator
 npm --prefix worker run migrate:remote
 ```
 > 期待出力: `3 commands executed successfully.` 等の成功メッセージ。
@@ -49,7 +49,7 @@ npx wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY
 `v2/worker/wrangler.toml` の `AUTH_MODE="firebase"` および `FIREBASE_PROJECT_ID` 等が正しく設定されているか確認し、デプロイします。
 また、APIキーなしの Public Fallback を利用する場合は `PUBLIC_FALLBACK_LLM_ENABLED="true"` に設定し、`SOURCE`, `BASE_URL`, `MODEL` を記述してください。
 ```bash
-cd /srv/pdf2zh-web/v2
+cd /path/to/pdf2zh-web-translator
 npm run deploy:worker
 ```
 > 期待出力: デプロイ先のWorker URL（`https://your-worker.workers.dev`）が表示されます。
@@ -61,7 +61,7 @@ Cloudflare Dashboard (Workers VPC) からTunnelを作成し、PC APIを本番向
    *(注意: Zero Trust の Published application や Public hostname は作成しません)*
 2. 表示されたインストールコマンドから トークン のみを抽出し、Host PCの `.env` に設定します。（`CLOUDFLARE_TUNNEL_TOKEN="<token>"`）
 3. トンネル作成後、`TUNNEL_ID` (UUID) をメモします。
-4. Host PC にて `docker compose up -d --build pc-api cloudflared` を実行します。
+4. Host PC にて `docker compose -p "${PROD_COMPOSE_PROJECT_NAME:-v2}" -f docker-compose.yml -f docker-compose.autodeploy.yml up -d --build pc-api pc-api-port-forward cloudflared` を実行します。既存本番の Compose project は `v2` で固定し、リポジトリのディレクトリ名が変わっても別スタックを誤作成しないようにします。`pc-api-port-forward` は Workers VPC が接続する `pc-api:8080` を API 本体の `8081` へ転送するため必須です。
 5. Worker 用の VPC Service を作成します:
 ```bash
 npx wrangler vpc service create pdf2zh-pc-api \
@@ -100,7 +100,7 @@ mkdir -p /mnt/hdd/pdf2zh-web/data/tmp
 ## 11.5. Production Preflight Check
 全ての実値設定とディレクトリ作成が完了したら、デプロイや起動の前に設定漏れがないか確認します。
 ```bash
-cd /srv/pdf2zh-web/v2
+cd /path/to/pdf2zh-web-translator
 npm install
 npm run verify
 ```
@@ -130,7 +130,7 @@ VITE_TURNSTILE_SITE_KEY=(Cloudflare Turnstile Site Key)
 ## 14. Frontend deploy
 `npm run deploy:frontend` または root の `npm run deploy` を用いてビルドとデプロイを行います。
 ```bash
-cd /srv/pdf2zh-web/v2
+cd /path/to/pdf2zh-web-translator
 npm run deploy:frontend
 ```
 > 期待出力: 出力された Pages URL を控え、Firebase Console の Authorized domains に追加してください。

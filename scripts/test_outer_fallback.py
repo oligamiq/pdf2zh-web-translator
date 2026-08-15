@@ -2,6 +2,7 @@ import sys
 import asyncio
 import os
 import types
+from pathlib import Path
 
 # 1. Mock pdf2zh_next globally before main is imported
 class MockSettingsModel:
@@ -103,6 +104,17 @@ async def attempts(job_id: str, req: FastAPIRequest):
 async def stats(job_id: str, req: FastAPIRequest):
     return JSONResponse({"ok": True})
 
+@worker_app.post("/agent/jobs/{job_id}/succeeded")
+async def succeeded(job_id: str, req: FastAPIRequest):
+    progress_history.append({"status": "completed", "progress_percent": 100, "progress_phase": "completed"})
+    return JSONResponse({"ok": True})
+
+@worker_app.post("/agent/jobs/{job_id}/failed")
+async def failed(job_id: str, req: FastAPIRequest):
+    body = await req.json()
+    progress_history.append({"status": "failed", "progress_percent": body.get("progress_percent", 0), "progress_phase": "failed"})
+    return JSONResponse({"ok": True})
+
 async def run_tests():
     print("Starting Outer Fallback tests...")
     
@@ -119,30 +131,28 @@ async def run_tests():
     with open("/tmp/job_outer_test/input.pdf", "w") as f:
         f.write("dummy")
 
-    sys.path.append("/srv/pdf2zh-web/v2/pc-api-python")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "pc-api-python"))
     import main
     main.UPLOAD_DIR = "/tmp"
     main.OUTPUT_DIR = "/tmp"
     main.WORK_DIR = "/tmp"
     main.LOG_DIR = "/tmp"
 
-    # Patch agent_loop so it stops after 1 iteration
-    class StopAgentLoop(BaseException):
-        pass
-
-    original_sleep = asyncio.sleep
-    async def mock_sleep(seconds):
-        if seconds == 5:
-            raise StopAgentLoop("Stop Agent Loop")
-        await original_sleep(seconds)
-    
-    asyncio.sleep = mock_sleep
+    # Run the long-lived agent until this one mocked job reaches a terminal progress update.
+    agent_task = asyncio.create_task(main.agent_loop())
     try:
-        await main.agent_loop()
-    except StopAgentLoop:
-        pass
+        for _ in range(200):
+            if progress_history and progress_history[-1].get("status") in ("completed", "failed"):
+                break
+            await asyncio.sleep(0.05)
+        else:
+            raise AssertionError("Timed out waiting for the mocked job to finish")
     finally:
-        asyncio.sleep = original_sleep
+        agent_task.cancel()
+        try:
+            await agent_task
+        except asyncio.CancelledError:
+            pass
 
     # 4. Assertions
     print("\n--- Verifying Results ---")

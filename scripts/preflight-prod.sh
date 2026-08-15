@@ -98,7 +98,25 @@ for d in uploads outputs logs work cache tmp; do
 done
 echo "✅ HDD directories exist and are writable."
 
-# 4. D1 Schema 確認
+# 4. Cloudflare account identity
+if [ ! -f "$WORKER_TOML" ]; then
+  echo "❌ Missing wrangler.toml: $WORKER_TOML"
+  exit 1
+fi
+WORKER_ACCOUNT_ID=$(grep -E '^\s*account_id\s*=' "$WORKER_TOML" | cut -d '"' -f 2)
+if [ -z "$WORKER_ACCOUNT_ID" ]; then
+  echo "❌ wrangler.toml must pin the production Cloudflare account_id"
+  exit 1
+fi
+WRANGLER_IDENTITY="$(cd "$V2_DIR/worker" && npx wrangler whoami 2>&1 || true)"
+if ! echo "$WRANGLER_IDENTITY" | grep -q "$WORKER_ACCOUNT_ID"; then
+  echo "❌ Wrangler is not authenticated to the production Cloudflare account: $WORKER_ACCOUNT_ID"
+  echo "   Run 'npx wrangler whoami' and authenticate with an account that has access before deploying."
+  exit 1
+fi
+echo "✅ Wrangler authentication includes the configured production account."
+
+# 5. D1 Schema 確認
 echo "--- Checking D1 Schema ---"
 if [ ! -f "$V2_DIR/worker/schema.sql" ]; then
   echo "❌ Missing D1 schema: worker/schema.sql"
@@ -140,13 +158,22 @@ if ! d1_table_exists "public_rate_limits"; then
 fi
 echo "✅ public_rate_limits table exists."
 
+for table in user_api_providers job_api_provider_snapshots job_api_provider_attempts user_basic_settings usage_limits; do
+  echo "Checking '$table' table..."
+  if ! d1_table_exists "$table"; then
+    echo "❌ Table '$table' does not exist in remote DB. Did you apply all migrations?"
+    exit 1
+  fi
+done
+echo "✅ Provider/settings/usage tables exist."
+
 echo "Checking 'jobs' table columns..."
 JOB_COLUMNS=$(
   cd "$V2_DIR/worker"
   npx wrangler d1 execute pdf2zh-db --remote --command "PRAGMA table_info(jobs);"
 )
 
-for col in owner_type public_receipt_hash public_client_hash public_ip_hash public_expires_at file_size_bytes turnstile_verified llm_credential_mode; do
+for col in owner_type public_receipt_hash public_client_hash public_ip_hash public_expires_at file_size_bytes turnstile_verified llm_credential_mode target_language progress_percent deleted_at execution_metadata; do
   if ! echo "$JOB_COLUMNS" | grep -q "$col"; then
     echo "❌ Column '$col' does not exist in 'jobs' table. Did you apply migrations?"
     exit 1
@@ -155,25 +182,38 @@ done
 echo "✅ 'jobs' table has required public columns."
 echo "✅ Remote tables exist."
 
-# 5. cloudflared 設定確認
+# 6. cloudflared 設定確認
 echo "--- Checking cloudflared ---"
 check_env "CLOUDFLARE_TUNNEL_TOKEN"
 (
   cd "$V2_DIR"
-  if ! docker compose config --services | grep -q "^cloudflared$"; then
+  COMPOSE_JSON="$(docker compose config --format json)"
+  if ! echo "$COMPOSE_JSON" | jq -e '.services.cloudflared' >/dev/null; then
     echo "❌ cloudflared service not found in docker-compose.yml"
     exit 1
   fi
   echo "✅ cloudflared compose service exists."
-  
-  if ! docker compose config | grep -q "image: cloudflare/cloudflared"; then
-    echo "❌ cloudflared image (cloudflare/cloudflared) not found in docker compose config"
+
+  if ! echo "$COMPOSE_JSON" | jq -e '.services["pc-api-port-forward"]' >/dev/null; then
+    echo "❌ pc-api-port-forward service not found in docker-compose.yml"
+    exit 1
+  fi
+  echo "✅ pc-api-port-forward compose service exists."
+
+  if ! echo "$COMPOSE_JSON" | jq -e '.services.cloudflared.depends_on["pc-api-port-forward"]' >/dev/null; then
+    echo "❌ cloudflared must depend on pc-api-port-forward so VPC port 8080 is always started"
+    exit 1
+  fi
+  echo "✅ cloudflared starts with the VPC port-forward dependency."
+
+  if ! echo "$COMPOSE_JSON" | jq -e '.services.cloudflared.image == "cloudflare/cloudflared:latest"' >/dev/null; then
+    echo "❌ cloudflared image (cloudflare/cloudflared:latest) not found in docker compose config"
     exit 1
   fi
   echo "✅ cloudflared image is configured."
 )
 
-# 6. Worker config & dry-run build
+# 7. Worker config & dry-run build
 echo "--- Checking Worker ---"
 if [ ! -f "$WORKER_TOML" ]; then
   echo "❌ Missing wrangler.toml: $WORKER_TOML"
@@ -222,7 +262,14 @@ if [[ "$VPC_SERVICE_ID" =~ placeholder|TODO|\<.*SERVICE.*\>|^$ ]]; then
   echo "❌ vpc_services.service_id is still a placeholder: $VPC_SERVICE_ID"
   exit 1
 fi
-echo "✅ VPC Service binding is correctly configured."
+echo "✅ VPC Service binding is syntactically configured."
+
+if ! VPC_CHECK_OUTPUT="$(cd "$V2_DIR/worker" && npx wrangler vpc service get "$VPC_SERVICE_ID" 2>&1)"; then
+  echo "❌ Configured VPC Service does not exist or is not accessible: $VPC_SERVICE_ID"
+  echo "$VPC_CHECK_OUTPUT"
+  exit 1
+fi
+echo "✅ VPC Service exists and is accessible."
 
 echo "--- Checking Public Fallback LLM ---"
 FALLBACK_ENABLED=$(grep -E '^\s*PUBLIC_FALLBACK_LLM_ENABLED\s*=' "$WORKER_TOML" | cut -d '"' -f 2 || echo "")
@@ -259,7 +306,7 @@ fi
 )
 echo "✅ Worker build/dry-run passed."
 
-# 7. Frontend build 確認
+# 8. Frontend build 確認
 echo "--- Checking Frontend ---"
 if [ -d "$V2_DIR/frontend" ]; then
   (
@@ -285,7 +332,7 @@ else
   exit 1
 fi
 
-# 8. pc-api Docker build 確認
+# 9. pc-api Docker build 確認
 echo "--- Checking pc-api Docker Build ---"
 (
   cd "$V2_DIR"

@@ -1,8 +1,9 @@
 import json
+from pathlib import Path
 import sys
 
 def main():
-    with open('/srv/pdf2zh-web/v2/frontend/lh-a11y-dev.json') as f:
+    with open(Path(__file__).with_name('lh-a11y-dev.json')) as f:
         data = json.load(f)
     
     score = data.get('categories', {}).get('accessibility', {}).get('score')

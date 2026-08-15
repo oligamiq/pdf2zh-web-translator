@@ -2,6 +2,28 @@ import { currentUser, setCurrentUser } from './authState';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
+type PublicJobReceipts = Record<string, string>;
+
+function readPublicJobs(): PublicJobReceipts {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem('public_jobs') || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([id, receipt]) => typeof id === 'string' && typeof receipt === 'string')
+    ) as PublicJobReceipts;
+  } catch {
+    localStorage.removeItem('public_jobs');
+    return {};
+  }
+}
+
+function writePublicJobs(publicJobs: PublicJobReceipts) {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('public_jobs', JSON.stringify(publicJobs));
+  }
+}
+
 async function getToken(forceRefresh: boolean = false) {
   const isE2EAuthBypassEnabled =
     import.meta.env.MODE === 'e2e' &&
@@ -66,7 +88,9 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}, forc
       let msg = `API Error: ${response.status} - ${errText}`;
       try {
         const parsed = JSON.parse(errText);
-        if (parsed.error) msg = parsed.error;
+        if (parsed.error && parsed.message) msg = `${parsed.error}: ${parsed.message}`;
+        else if (parsed.message) msg = parsed.message;
+        else if (parsed.error) msg = parsed.error;
       } catch (e) {}
       throw new Error(msg);
     }
@@ -101,20 +125,21 @@ export async function getJobs() {
   }
   
   // Also fetch public jobs stored in localStorage
-  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
-  const publicJobs = JSON.parse(publicJobsStr);
+  const publicJobs = readPublicJobs();
   
   for (const [id, receipt] of Object.entries(publicJobs)) {
     try {
-      const publicJob = await apiFetch(`/public/jobs/${id}?receipt=${receipt}`).then(r => r.json());
+      const publicJob = await apiFetch(`/public/jobs/${id}?receipt=${encodeURIComponent(receipt)}`).then(r => r.json());
       // Append if not already in the list
       if (!jobs.find((j: any) => j.id === id)) {
         jobs.push(publicJob);
       }
     } catch (e) {
-      // Ignore missing or expired public jobs
+      // Prune missing/expired receipts so every dashboard refresh does not retry them forever.
+      delete publicJobs[id];
     }
   }
+  writePublicJobs(publicJobs);
   
   // sort by created_at DESC
   jobs.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -123,21 +148,19 @@ export async function getJobs() {
 }
 
 export async function getJob(id: string) {
-  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
-  const publicJobs = JSON.parse(publicJobsStr);
+  const publicJobs = readPublicJobs();
   const receipt = publicJobs[id];
   if (receipt) {
-    return apiFetch(`/public/jobs/${id}?receipt=${receipt}`).then(r => r.json());
+    return apiFetch(`/public/jobs/${id}?receipt=${encodeURIComponent(receipt)}`).then(r => r.json());
   }
   return apiFetch(`/jobs/${id}`).then(r => r.json());
 }
 
 export async function getJobAttempts(id: string) {
-  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
-  const publicJobs = JSON.parse(publicJobsStr);
+  const publicJobs = readPublicJobs();
   const receipt = publicJobs[id];
   if (receipt) {
-    return apiFetch(`/public/jobs/${id}/attempts?receipt=${receipt}`).then(r => r.json());
+    return apiFetch(`/public/jobs/${id}/attempts?receipt=${encodeURIComponent(receipt)}`).then(r => r.json());
   }
   return apiFetch(`/jobs/${id}/attempts`).then(r => r.json());
 }
@@ -155,21 +178,19 @@ export async function uploadJob(file: File, targetLanguage: string, turnstileTok
   }).then(r => r.json());
   
   if (res.receipt) {
-    const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
-    const publicJobs = JSON.parse(publicJobsStr);
+    const publicJobs = readPublicJobs();
     publicJobs[res.id] = res.receipt;
-    localStorage.setItem('public_jobs', JSON.stringify(publicJobs));
+    writePublicJobs(publicJobs);
   }
   
   return res;
 }
 
 export async function getLog(id: string, offset: number) {
-  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
-  const publicJobs = JSON.parse(publicJobsStr);
+  const publicJobs = readPublicJobs();
   const receipt = publicJobs[id];
   if (receipt) {
-    return apiFetch(`/public/jobs/${id}/log?receipt=${receipt}&offset=${offset}&limit=65536`).then(r => r.json());
+    return apiFetch(`/public/jobs/${id}/log?receipt=${encodeURIComponent(receipt)}&offset=${offset}&limit=65536`).then(r => r.json());
   }
   return apiFetch(`/jobs/${id}/log?offset=${offset}&limit=65536`).then(r => r.json());
 }
@@ -177,11 +198,10 @@ export async function getLog(id: string, offset: number) {
 // Removed getDownloadUrl since downloadJob is used
 
 export async function downloadJob(id: string) {
-  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
-  const publicJobs = JSON.parse(publicJobsStr);
+  const publicJobs = readPublicJobs();
   const receipt = publicJobs[id];
   if (receipt) {
-    return apiFetch(`/public/jobs/${id}/download?receipt=${receipt}`);
+    return apiFetch(`/public/jobs/${id}/download?receipt=${encodeURIComponent(receipt)}`);
   }
   return apiFetch(`/jobs/${id}/download`);
 }
@@ -189,8 +209,7 @@ export async function downloadJob(id: string) {
 export function getPdfUrl(job: any, kind: "translated" | "bilingual", download: boolean = false): string {
   let receipt = job.view_token;
   if (!receipt && job.owner_type === 'public') {
-    const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
-    const publicJobs = JSON.parse(publicJobsStr);
+    const publicJobs = readPublicJobs();
     receipt = publicJobs[job.id];
   }
   const domain = BASE_URL || 'https://pdftr.oligami.workers.dev';
@@ -202,13 +221,12 @@ export function getPdfUrl(job: any, kind: "translated" | "bilingual", download: 
 }
 
 export async function deleteJob(id: string) {
-  const publicJobsStr = localStorage.getItem('public_jobs') || '{}';
-  const publicJobs = JSON.parse(publicJobsStr);
+  const publicJobs = readPublicJobs();
   const receipt = publicJobs[id];
   if (receipt) {
-    const res = await apiFetch(`/public/jobs/${id}?receipt=${receipt}`, { method: 'DELETE' }).then(r => r.json());
+    const res = await apiFetch(`/public/jobs/${id}?receipt=${encodeURIComponent(receipt)}`, { method: 'DELETE' }).then(r => r.json());
     delete publicJobs[id];
-    localStorage.setItem('public_jobs', JSON.stringify(publicJobs));
+    writePublicJobs(publicJobs);
     return res;
   }
   return apiFetch(`/jobs/${id}`, { method: 'DELETE' }).then(r => r.json());
@@ -216,23 +234,49 @@ export async function deleteJob(id: string) {
 
 export interface ApiBasicSettings {
   target_language?: string;
-  has_api_key?: boolean; // For legacy or general indicator, if needed
+  has_api_key?: boolean;
+  api_key_last4?: string | null;
 }
 
+type ApiBasicSettingsResponse = {
+  default_target_language?: string;
+  ollama?: {
+    has_api_key?: boolean;
+    api_key_last4?: string | null;
+  };
+};
+
 export async function getApiBasicSettings(): Promise<ApiBasicSettings> {
-  return apiFetch('/settings/api/basic').then(r => r.json());
+  const data = await apiFetch('/settings/api/basic').then(r => r.json()) as ApiBasicSettingsResponse;
+  return {
+    target_language: data.default_target_language,
+    has_api_key: Boolean(data.ollama?.has_api_key),
+    api_key_last4: data.ollama?.api_key_last4 ?? null,
+  };
 }
 
 export async function updateApiBasicSettings(payload: { target_language?: string, api_key?: string }) {
+  const body: Record<string, unknown> = {};
+  if (payload.target_language !== undefined) {
+    body.default_target_language = payload.target_language;
+  }
+  if (payload.api_key !== undefined) {
+    if (payload.api_key === '') {
+      body.clear_ollama_api_key = true;
+    } else {
+      body.ollama_api_key = payload.api_key;
+    }
+  }
+
   return apiFetch('/settings/api/basic', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   }).then(r => r.json());
 }
 
 export interface ApiProvider {
-  id: number;
+  id: string;
   display_name: string;
   provider_name?: string; // legacy fallback
   provider_type?: string;
@@ -258,7 +302,7 @@ export async function addApiProvider(payload: any) {
   }).then(r => r.json());
 }
 
-export async function updateApiProvider(id: number, payload: any) {
+export async function updateApiProvider(id: string, payload: any) {
   return apiFetch(`/settings/api/providers/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -266,19 +310,19 @@ export async function updateApiProvider(id: number, payload: any) {
   }).then(r => r.json());
 }
 
-export async function deleteApiProvider(id: number) {
+export async function deleteApiProvider(id: string) {
   return apiFetch(`/settings/api/providers/${id}`, {
     method: 'DELETE',
   }).then(r => r.json());
 }
 
-export async function testApiProvider(id: number) {
+export async function testApiProvider(id: string) {
   return apiFetch(`/settings/api/providers/${id}/test`, {
     method: 'POST',
   }).then(r => r.json());
 }
 
-export async function reorderApiProviders(payload: { provider_ids: number[] }) {
+export async function reorderApiProviders(payload: { provider_ids: string[] }) {
   return apiFetch('/settings/api/providers/reorder', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

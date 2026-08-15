@@ -3,14 +3,41 @@ from fastapi.responses import StreamingResponse
 import httpx
 import logging
 import asyncio
+import secrets
+import socket
+import ipaddress
+from urllib.parse import urlparse
 
 logger = logging.getLogger("pc-api-python")
 
 ROUTER_STATES = {}
 
-async def handle_router_request(job_id: str, request: Request):
+async def is_public_provider_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return False
+        if parsed.username or parsed.password:
+            return False
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        infos = await asyncio.to_thread(socket.getaddrinfo, parsed.hostname, port, type=socket.SOCK_STREAM)
+        if not infos:
+            return False
+        for info in infos:
+            ip = ipaddress.ip_address(info[4][0])
+            if not ip.is_global:
+                return False
+        return True
+    except (OSError, ValueError):
+        return False
+
+async def handle_router_request(job_id: str, request: Request, router_token: str | None = None):
     state = ROUTER_STATES.get(job_id)
     if not state:
+        return Response("Job state not found", status_code=404)
+
+    expected_token = state.get("token")
+    if not isinstance(expected_token, str) or not isinstance(router_token, str) or not secrets.compare_digest(router_token, expected_token):
         return Response("Job state not found", status_code=404)
         
     providers = state.get("providers", [])
@@ -29,6 +56,12 @@ async def handle_router_request(job_id: str, request: Request):
         base_url = provider.get("base_url", "").rstrip("/")
         api_key = provider.get("api_key")
         model = provider.get("model")
+        reasoning_effort = provider.get("reasoning_effort")
+        try:
+            timeout_seconds = float(provider.get("timeout_seconds") or 60.0)
+        except (TypeError, ValueError):
+            timeout_seconds = 60.0
+        timeout_seconds = max(1.0, min(600.0, timeout_seconds))
         
         if not base_url:
             continue
@@ -42,6 +75,8 @@ async def handle_router_request(job_id: str, request: Request):
             body_json = json.loads(req_body)
             if model:
                 body_json["model"] = model
+            if reasoning_effort in ("low", "medium", "high"):
+                body_json["reasoning_effort"] = reasoning_effort
             payload = json.dumps(body_json).encode("utf-8")
         except:
             pass
@@ -62,6 +97,12 @@ async def handle_router_request(job_id: str, request: Request):
         
         stats = state["stats"][provider_id]
         stats["total_requests"] += 1
+
+        if not await is_public_provider_url(target_url):
+            stats["failure_count"] += 1
+            stats["last_error"] = "Blocked non-public or invalid provider URL"
+            final_response = Response("Provider URL is not allowed", status_code=400)
+            continue
         
         # Check if streaming is requested
         is_stream = False
@@ -72,7 +113,9 @@ async def handle_router_request(job_id: str, request: Request):
         except:
             pass
             
-        client = httpx.AsyncClient(timeout=60.0)
+        # Provider traffic must not inherit host HTTP(S)_PROXY settings; doing so could
+        # bypass the destination checks above or leak user credentials to a proxy.
+        client = httpx.AsyncClient(timeout=timeout_seconds, trust_env=False)
         try:
             req = client.build_request(request.method, target_url, headers=req_headers, content=payload)
             if is_stream:
@@ -82,18 +125,9 @@ async def handle_router_request(job_id: str, request: Request):
                 
             stats["last_http_status"] = resp.status_code
             
-            if resp.status_code in [429, 500, 502, 503, 504]:
+            if resp.status_code < 200 or resp.status_code >= 300:
                 if resp.status_code == 429:
                     stats["rate_limit_count"] += 1
-                stats["failure_count"] += 1
-                stats["last_error"] = f"HTTP {resp.status_code}"
-                if is_stream:
-                    await resp.aclose()
-                await client.aclose()
-                final_response = Response(f"Provider failed with {resp.status_code}", status_code=resp.status_code)
-                continue
-                
-            if resp.status_code in [401, 403, 400, 404]:
                 stats["failure_count"] += 1
                 stats["last_error"] = f"HTTP {resp.status_code}"
                 if is_stream:

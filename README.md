@@ -14,9 +14,9 @@ PDFをアップロードすると、翻訳済みPDFと対訳PDFを生成して�
 
 このリポジトリは以下の3つのコンポーネントで構成されるモノレポです：
 
-1. **frontend**: Cloudflare Pages でホストされるWeb UI。React(Solid.js) + Vite。一部ページ(`/about`, `/licenses`)はSSGで静的生成されます。
+1. **frontend**: Cloudflare Pages でホストされるWeb UI。SolidStart / Solid.js + Vite。一部ページ(`/about`, `/licenses`)はSSGで静的生成されます。
 2. **worker**: Cloudflare Workers + D1 で動作するAPIサーバー。ユーザー管理、ジョブ管理、設定管理を行います。
-3. **pc-api-python**: 実際のPDF翻訳処理を担当するPythonバックエンド。Cloudflare Accessを通してWorkerから非同期ジョブを受け取ります。
+3. **pc-api-python**: 実際のPDF翻訳処理を担当するPythonバックエンド。Worker APIをポーリングしてジョブを取得し、Workerからの内部ファイルAPI要求も処理します。
 
 ## ローカル開発手順
 
@@ -56,10 +56,21 @@ PDFをアップロードすると、翻訳済みPDFと対訳PDFを生成して�
      ```
 
 3. **ローカルサーバーの起動**
+
+   3つのコンポーネントは別プロセスで起動します。ルートの `npm run dev` はありません。
+
    ```bash
-   npm run dev
+   # Terminal 1: Python backend
+   docker compose up --build pc-api
+
+   # Terminal 2: Cloudflare Worker
+   npm --workspace pdf2zh-worker run dev
+
+   # Terminal 3: Frontend
+   npm --workspace frontend run dev
    ```
-   これで frontend, worker, pc-api-python 全てが連動して起動します。
+
+   Worker/PC API間のローカル接続先とシークレットは `.dev.vars` / `.env` に合わせて設定してください。
 
 ### E2Eテストの実行
 

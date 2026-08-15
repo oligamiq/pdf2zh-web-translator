@@ -8,7 +8,9 @@
     "deploy": "npx wrangler deploy",
     "migrate:remote": "npx wrangler d1 migrations apply pdf2zh-db --remote",
     "d1:tables": "npx wrangler d1 execute pdf2zh-db --remote --command \"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;\"",
-    "secret:turnstile": "npx wrangler secret put TURNSTILE_SECRET_KEY"
+    "secret:turnstile": "npx wrangler secret put TURNSTILE_SECRET_KEY",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run typecheck"
   },
   "dependencies": {
     "hono": "^4.2.0",

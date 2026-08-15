@@ -52,6 +52,7 @@ services:
     restart: unless-stopped
     depends_on:
       - pc-api
+      - pc-api-port-forward
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
     networks:
       - internal-net

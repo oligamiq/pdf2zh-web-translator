@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,9 +20,14 @@ import (
 )
 
 var (
-	jobsMu         sync.Mutex
-	runningJobs    = make(map[string]bool)
+	jobsMu       sync.Mutex
+	runningJobs  = make(map[string]bool)
+	jobIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 )
+
+func validJobID(jobID string) bool {
+	return jobIDPattern.MatchString(jobID)
+}
 
 func ensureDir(path string) error {
 	return os.MkdirAll(path, 0755)
@@ -28,10 +35,19 @@ func ensureDir(path string) error {
 
 func verifySecret(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/internal/healthz" {
+			next(w, r)
+			return
+		}
 		secret := os.Getenv("PROXY_SECRET")
-		hasHeader := r.Header.Get("X-Proxy-Secret") != ""
-		if secret != "" && r.Header.Get("X-Proxy-Secret") != secret {
-			log.Printf("proxy secret rejected: method=%s path=%s has_header=%t", r.Method, r.URL.Path, hasHeader)
+		provided := r.Header.Get("X-Proxy-Secret")
+		if secret == "" {
+			log.Printf("PROXY_SECRET is not configured; refusing method=%s path=%s", r.Method, r.URL.Path)
+			http.Error(w, "Proxy authentication is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		if len(provided) != len(secret) || subtle.ConstantTimeCompare([]byte(provided), []byte(secret)) != 1 {
+			log.Printf("proxy secret rejected: method=%s path=%s has_header=%t", r.Method, r.URL.Path, provided != "")
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -53,6 +69,10 @@ func handlePutInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jobID := parts[3]
+	if !validJobID(jobID) {
+		http.Error(w, "Invalid job id", http.StatusBadRequest)
+		return
+	}
 	log.Printf("received input upload: job_id=%s method=%s path=%s", jobID, r.Method, r.URL.Path)
 
 	uploadDir := filepath.Join("/data/uploads", jobID)
@@ -81,10 +101,14 @@ func handleLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jobID := parts[3]
+	if !validJobID(jobID) {
+		http.Error(w, "Invalid job id", http.StatusBadRequest)
+		return
+	}
 
 	offsetStr := r.URL.Query().Get("offset")
 	limitStr := r.URL.Query().Get("limit")
-	
+
 	var offset int64 = 0
 	var limit int64 = 65536
 	if offsetStr != "" {
@@ -142,6 +166,10 @@ func handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jobID := parts[3]
+	if !validJobID(jobID) {
+		http.Error(w, "Invalid job id", http.StatusBadRequest)
+		return
+	}
 
 	dirPath := filepath.Join("/data/outputs", jobID)
 	zipName := "translated_" + jobID + ".zip"
@@ -157,7 +185,7 @@ func handleDownload(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", zipName))
-	
+
 	zw := zip.NewWriter(w)
 	defer zw.Close()
 
@@ -242,12 +270,16 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jobID := parts[3]
+	if !validJobID(jobID) {
+		http.Error(w, "Invalid job id", http.StatusBadRequest)
+		return
+	}
 
 	os.RemoveAll(filepath.Join("/data/uploads", jobID))
 	os.RemoveAll(filepath.Join("/data/outputs", jobID))
 	os.RemoveAll(filepath.Join("/data/logs", jobID+".log"))
 	os.RemoveAll(filepath.Join("/data/work", jobID))
-	
+
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -259,6 +291,9 @@ type LLMSettings struct {
 }
 
 func runJob(jobID string, llmSettings *LLMSettings) error {
+	if !validJobID(jobID) {
+		return fmt.Errorf("invalid job id")
+	}
 	jobsMu.Lock()
 	if runningJobs[jobID] {
 		jobsMu.Unlock()
@@ -314,7 +349,7 @@ func runJob(jobID string, llmSettings *LLMSettings) error {
 			cmdEnv = append(cmdEnv, "OPENAI_COMPATIBLE_MODEL="+model)
 			log.Printf("OPENAI_COMPATIBLE_MODEL=%s", model)
 		}
-		
+
 		baseURL := os.Getenv("PDF2ZH_OPENAI_COMPATIBLE_BASE_URL")
 		if llmSettings != nil && llmSettings.BaseURL != "" {
 			baseURL = llmSettings.BaseURL
@@ -323,7 +358,7 @@ func runJob(jobID string, llmSettings *LLMSettings) error {
 			cmdEnv = append(cmdEnv, "OPENAI_COMPATIBLE_BASE_URL="+baseURL)
 			log.Printf("OPENAI_COMPATIBLE_BASE_URL=%s", baseURL)
 		}
-		
+
 		apiKey := os.Getenv("PDF2ZH_OPENAI_COMPATIBLE_API_KEY")
 		if llmSettings != nil && llmSettings.APIKey != "" {
 			apiKey = llmSettings.APIKey
@@ -358,7 +393,7 @@ func runJob(jobID string, llmSettings *LLMSettings) error {
 	startTime := time.Now()
 	err = cmd.Run()
 	duration := time.Since(startTime)
-	
+
 	exitCode := 0
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
@@ -367,7 +402,7 @@ func runJob(jobID string, llmSettings *LLMSettings) error {
 			exitCode = -1
 		}
 	}
-	
+
 	log.Printf("pdf2zh_next finished: job_id=%s exit_code=%d duration_ms=%d", jobID, exitCode, duration.Milliseconds())
 
 	logOutputTree(jobID, outputDir)
@@ -392,6 +427,10 @@ func handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jobID := parts[3]
+	if !validJobID(jobID) {
+		http.Error(w, "Invalid job id", http.StatusBadRequest)
+		return
+	}
 
 	// Async run for manual/webhook triggers
 	go runJob(jobID, nil)
@@ -426,20 +465,20 @@ func agentLoop() {
 
 	for {
 		time.Sleep(5 * time.Second)
-		
+
 		req, _ := http.NewRequest("POST", workerAPI+"/agent/claim", strings.NewReader(`{"worker_id":"`+workerID+`"}`))
 		req.Header.Set("Authorization", "Bearer "+agentToken)
 		req.Header.Set("Content-Type", "application/json")
-		
+
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			log.Println("Agent claim error:", err)
 			continue
 		}
-		
+
 		var claimResp struct {
-			Job *struct { 
-				ID string `json:"id"` 
+			Job *struct {
+				ID          string       `json:"id"`
 				LLMSettings *LLMSettings `json:"llm_settings"`
 			} `json:"job"`
 		}
@@ -466,7 +505,7 @@ func agentLoop() {
 		} else {
 			log.Println("Job succeeded:", jobID)
 		}
-		
+
 		req2, _ := http.NewRequest("POST", reportURL, strings.NewReader(body))
 		req2.Header.Set("Authorization", "Bearer "+agentToken)
 		req2.Header.Set("Content-Type", "application/json")
@@ -507,7 +546,7 @@ func main() {
 			http.NotFound(w, r)
 		}
 	})
-	
+
 	mux.HandleFunc("/internal/jobs/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/log") && r.Method == http.MethodGet {
 			handleLog(w, r)

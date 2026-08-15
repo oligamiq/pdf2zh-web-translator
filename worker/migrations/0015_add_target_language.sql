@@ -1,0 +1,1 @@
+ALTER TABLE jobs ADD COLUMN target_language TEXT NOT NULL DEFAULT 'ja';

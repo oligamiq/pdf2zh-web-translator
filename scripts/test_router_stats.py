@@ -2,7 +2,9 @@ import asyncio
 from fastapi import Request
 
 import sys
-sys.path.insert(0, "/srv/pdf2zh-web/v2/pc-api-python")
+from pathlib import Path
+project_root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(project_root / "pc-api-python"))
 import router
 
 class MockRequest:
@@ -16,8 +18,13 @@ class MockRequest:
         return self._body
 
 async def test_router():
+    async def allow_test_provider_url(_url: str) -> bool:
+        return True
+    router.is_public_provider_url = allow_test_provider_url
+
     job_id = "test_429"
     router.ROUTER_STATES[job_id] = {
+        "token": "test-token",
         "providers": [{
             "id": "p1",
             "base_url": "http://mock",
@@ -28,6 +35,11 @@ async def test_router():
         "consecutive_router_failures": 0
     }
     
+    # Invalid per-job router capability must be rejected before any upstream request.
+    req = MockRequest()
+    unauthorized = await router.handle_router_request(job_id, req, "wrong-token")
+    assert unauthorized.status_code == 404
+
     # Mock httpx client
     import httpx
     class MockResponse:
@@ -44,8 +56,7 @@ async def test_router():
     original_client = httpx.AsyncClient
     httpx.AsyncClient = MockAsyncClient
     
-    req = MockRequest()
-    res = await router.handle_router_request(job_id, req)
+    res = await router.handle_router_request(job_id, req, "test-token")
     
     stats = router.ROUTER_STATES[job_id]["stats"]["p1"]
     assert stats["total_requests"] == 1
@@ -61,7 +72,7 @@ async def test_router():
         async def send(self, *args, **kwargs): return MockResponse(400)
     httpx.AsyncClient = MockAsyncClient400
     
-    res2 = await router.handle_router_request(job_id, req)
+    res2 = await router.handle_router_request(job_id, req, "test-token")
     stats2 = router.ROUTER_STATES[job_id]["stats"]["p2"]
     assert stats2["total_requests"] == 1
     assert stats2["failure_count"] == 1

@@ -2,6 +2,7 @@ import sys
 import asyncio
 import os
 import types
+from pathlib import Path
 
 # 1. Mock pdf2zh_next globally before main is imported
 class MockSettingsModel:
@@ -97,6 +98,17 @@ async def attempts(job_id: str, req: FastAPIRequest):
 async def stats(job_id: str, req: FastAPIRequest):
     return JSONResponse({"ok": True})
 
+@worker_app.post("/agent/jobs/{job_id}/succeeded")
+async def succeeded(job_id: str, req: FastAPIRequest):
+    progress_history.append({"status": "completed", "progress_percent": 100, "progress_phase": "completed"})
+    return JSONResponse({"ok": True})
+
+@worker_app.post("/agent/jobs/{job_id}/failed")
+async def failed(job_id: str, req: FastAPIRequest):
+    body = await req.json()
+    progress_history.append({"status": "failed", "progress_percent": body.get("progress_percent", 0), "progress_phase": "failed"})
+    return JSONResponse({"ok": True})
+
 async def run_tests():
     global test_case
     
@@ -112,33 +124,34 @@ async def run_tests():
     with open("/tmp/job_outer_test/input.pdf", "w") as f:
         f.write("dummy")
 
-    sys.path.append("/srv/pdf2zh-web/v2/pc-api-python")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "pc-api-python"))
     import main
     main.UPLOAD_DIR = "/tmp"
     main.OUTPUT_DIR = "/tmp"
     main.WORK_DIR = "/tmp"
     main.LOG_DIR = "/tmp"
 
-    class StopAgentLoop(BaseException):
-        pass
-
-    original_sleep = asyncio.sleep
-    async def mock_sleep(seconds):
-        if seconds == 5:
-            raise StopAgentLoop("Stop Agent Loop")
-        await original_sleep(seconds)
-    
-    asyncio.sleep = mock_sleep
+    async def run_agent_until_terminal():
+        agent_task = asyncio.create_task(main.agent_loop())
+        try:
+            for _ in range(200):
+                if progress_history and progress_history[-1].get("status") in ("completed", "failed"):
+                    return
+                await asyncio.sleep(0.05)
+            raise AssertionError("Timed out waiting for the mocked job to finish")
+        finally:
+            agent_task.cancel()
+            try:
+                await agent_task
+            except asyncio.CancelledError:
+                pass
 
     # RUN TEST A
     print("--- Running Test A: failure_count high, consecutive_router_failures = 0 ---")
     test_case = "A"
     claim.claimed = False
     progress_history.clear()
-    try:
-        await main.agent_loop()
-    except StopAgentLoop:
-        pass
+    await run_agent_until_terminal()
         
     fallback_messages = [p for p in progress_history if "Retrying with SiliconFlow Free" in p.get("progress_message", "")]
     assert len(fallback_messages) == 0, "Test A FAILED: Outer fallback was incorrectly triggered!"
@@ -150,10 +163,7 @@ async def run_tests():
     test_case = "B"
     claim.claimed = False
     progress_history.clear()
-    try:
-        await main.agent_loop()
-    except StopAgentLoop:
-        pass
+    await run_agent_until_terminal()
 
     fallback_messages = [p for p in progress_history if "Retrying with SiliconFlow Free" in p.get("progress_message", "")]
     assert len(fallback_messages) > 0, "Test B FAILED: Outer fallback was NOT triggered!"
@@ -162,7 +172,6 @@ async def run_tests():
 
     server.should_exit = True
     await server_task
-    asyncio.sleep = original_sleep
 
 if __name__ == "__main__":
     asyncio.run(run_tests())

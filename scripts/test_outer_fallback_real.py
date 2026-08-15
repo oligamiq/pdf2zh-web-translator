@@ -3,6 +3,7 @@ import asyncio
 import os
 import shutil
 import httpx
+from pathlib import Path
 from fastapi import FastAPI, Request as FastAPIRequest
 from fastapi.responses import JSONResponse
 from uvicorn import Config, Server
@@ -32,7 +33,7 @@ async def run_test():
     server_task = asyncio.create_task(server.serve())
     await asyncio.sleep(1)
 
-    pdf_path = "/srv/pdf2zh-web/v2/fixtures/smoke-text.pdf"
+    pdf_path = str(Path(__file__).resolve().parents[1] / "fixtures" / "smoke-text.pdf")
     work_dir = "/tmp/real_test_work"
     output_dir = "/tmp/real_test_output"
     

@@ -1,6 +1,7 @@
 import asyncio
 import httpx
 import sys
+from pathlib import Path
 
 async def run_tests():
     print("Starting router proxy tests...")
@@ -16,16 +17,23 @@ async def run_tests():
         from fastapi import FastAPI, Request
         from fastapi.responses import JSONResponse
         from uvicorn import Config, Server
-        import sys
-        sys.path.append("/srv/pdf2zh-web/v2/pc-api-python")
-        from router import handle_router_request, ROUTER_STATES
+        project_root = Path(__file__).resolve().parents[1]
+        sys.path.insert(0, str(project_root / "pc-api-python"))
+        import router
+
+        async def allow_test_provider_url(_url: str) -> bool:
+            return True
+
+        router.is_public_provider_url = allow_test_provider_url
+        handle_router_request = router.handle_router_request
+        ROUTER_STATES = router.ROUTER_STATES
 
         test_app = FastAPI()
-        @test_app.post("/internal/router/{job_id}/{router_token}/v1/chat/completions")
-        async def router_proxy(job_id: str, router_token: str, request: Request):
-            if job_id not in ROUTER_STATES or ROUTER_STATES[job_id].get("token") != router_token:
-                return JSONResponse({"error": "Unauthorized"}, status_code=404)
-            return await handle_router_request(job_id, request)
+        @test_app.post("/internal/router/{job_id}/v1/chat/completions")
+        async def router_proxy(job_id: str, request: Request):
+            auth = request.headers.get("Authorization", "")
+            router_token = auth[7:].strip() if auth.startswith("Bearer ") else None
+            return await handle_router_request(job_id, request, router_token)
 
         config = Config(app=test_app, host="127.0.0.1", port=8005, log_level="error")
         server = Server(config)
@@ -61,7 +69,7 @@ async def run_tests():
         payload = {"model": "test", "messages": [{"role": "user", "content": "hi"}], "stream": True}
         print("Sending request to router for Test 1...")
         async with httpx.AsyncClient(timeout=10.0) as client:
-            async with client.stream("POST", "http://127.0.0.1:8005/internal/router/job_test_1/tok1/v1/chat/completions", json=payload) as resp:
+            async with client.stream("POST", "http://127.0.0.1:8005/internal/router/job_test_1/v1/chat/completions", json=payload, headers={"Authorization": "Bearer tok1"}) as resp:
                 print(f"Router response status: {resp.status_code}")
                 content = await resp.aread()
                 print(f"Router response body: {content.decode('utf-8').strip()}")
@@ -100,7 +108,7 @@ async def run_tests():
         print("Sending request to router for Test 2...")
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                async with client.stream("POST", "http://127.0.0.1:8005/internal/router/job_test_2/tok2/v1/chat/completions", json=payload) as resp:
+                async with client.stream("POST", "http://127.0.0.1:8005/internal/router/job_test_2/v1/chat/completions", json=payload, headers={"Authorization": "Bearer tok2"}) as resp:
                     print(f"Router response status: {resp.status_code}")
                     async for chunk in resp.aiter_raw():
                         print(f"Received chunk: {chunk}")
@@ -141,7 +149,7 @@ async def run_tests():
         payload_false = {"model": "test", "messages": [{"role": "user", "content": "hi"}], "stream": False}
         print("Sending request to router for Test 3...")
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post("http://127.0.0.1:8005/internal/router/job_test_3/tok3/v1/chat/completions", json=payload_false)
+            resp = await client.post("http://127.0.0.1:8005/internal/router/job_test_3/v1/chat/completions", json=payload_false, headers={"Authorization": "Bearer tok3"})
             print(f"Router response status: {resp.status_code}")
             content = resp.text
             print(f"Router response body: {content}")

@@ -237,7 +237,7 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
         setError(`PDFサイズが大きすぎます。${isGuest() ? 'ゲスト利用では5 MiBまでです。' : ''}`);
       } else if (err.message && err.message.includes('rate_limit_exceeded')) {
         setError('今日の変換回数上限に達しました。明日以降に再試行してください。');
-      } else if (err.message && err.message.includes('Failed to fetch')) {
+      } else if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('Cannot connect to API'))) {
         setError('変換サーバーに接続できません。');
       } else {
         setError(`変換に失敗しました: ${err.message}`);

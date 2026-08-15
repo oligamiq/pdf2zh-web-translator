@@ -96,7 +96,7 @@ PC_API_LOG="$TMP_DIR/pc-api.log"
 echo "2. Creating temporary files in E2E debug dir: $TMP_DIR"
 TMP_ENV="$TMP_DIR/env"
 TMP_COMPOSE_OVERRIDE="$TMP_DIR/docker-compose.override.yml"
-TMP_WRANGLER="$V2_DIR/worker/wrangler.e2e.toml"
+TMP_WRANGLER="$TMP_DIR/wrangler.e2e.toml"
 
 echo "Firebase Local E2E mode"
 echo "Worker dev: $WORKER_HOST_URL"
@@ -122,6 +122,30 @@ services:
 EOF
 
 cp "$V2_DIR/worker/wrangler.toml" "$TMP_WRANGLER"
+# Local E2E must not retain the production remote VPC binding: if it is present,
+# Wrangler opens a remote preview session instead of using PRIVATE_API_BASE_URL.
+python3 - "$TMP_WRANGLER" "$V2_DIR/worker/src/index.ts" <<'PYLOCALWRANGLER'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+entrypoint = Path(sys.argv[2]).resolve().as_posix()
+lines = p.read_text().splitlines()
+out = []
+skipping_vpc = False
+for line in lines:
+    stripped = line.strip()
+    if stripped.startswith('main ='):
+        line = f'main = "{entrypoint}"'
+        stripped = line.strip()
+    if stripped == '[[vpc_services]]':
+        skipping_vpc = True
+        continue
+    if skipping_vpc and stripped.startswith('['):
+        skipping_vpc = False
+    if not skipping_vpc:
+        out.append(line)
+p.write_text('\n'.join(out) + '\n')
+PYLOCALWRANGLER
 cat >> "$TMP_WRANGLER" <<EOF
 
 PRIVATE_API_BASE_URL = "${PC_API_HOST_URL}"
@@ -151,6 +175,8 @@ cleanup() {
   echo "Stopping Worker dev server (PID: ${WORKER_PID:-none})..."
   if [ -n "${WORKER_PID:-}" ]; then
     kill "$WORKER_PID" 2>/dev/null || true
+    pkill -TERM -f "wrangler.*${WORKER_PORT}" 2>/dev/null || true
+    pkill -TERM -f "workerd.*${WORKER_PORT}" 2>/dev/null || true
   fi
 
   echo "Cleaning up Docker Compose project $COMPOSE_PROJECT_NAME..."
@@ -194,7 +220,7 @@ D1_SCHEMA_FILE="$V2_DIR/worker/schema.sql"
     --local \
     --persist-to "$WRANGLER_PERSIST_DIR" \
     --file "$D1_SCHEMA_FILE" \
-    -c wrangler.e2e.toml > "$TMP_DIR/worker-d1-schema.log" 2>&1 || true
+    -c "$TMP_WRANGLER" > "$TMP_DIR/worker-d1-schema.log" 2>&1 || true
 )
 
 echo "4. Starting Worker dev server in background..."
@@ -212,7 +238,7 @@ EOF
 : > "$WORKER_LOG"
 (
   cd "$V2_DIR/worker"
-  npx wrangler dev -c wrangler.e2e.toml --ip 0.0.0.0 --port "$WORKER_PORT" --persist-to "$WRANGLER_PERSIST_DIR" > "$WORKER_LOG" 2>&1
+  npx wrangler dev -c "$TMP_WRANGLER" --ip 0.0.0.0 --port "$WORKER_PORT" --persist-to "$WRANGLER_PERSIST_DIR" > "$WORKER_LOG" 2>&1
 ) &
 WORKER_PID="$!"
 
@@ -365,8 +391,8 @@ JOB_ID="$(python3 -c "import sys, json; print(json.load(open(sys.argv[1]))['id']
 echo "✅ Job ID: $JOB_ID"
 
 echo "Test 5.1: Verify snapshot ciphertext is different (re-encrypted)"
-USER_CIPHER="$(cd "$V2_DIR/worker" && npx wrangler d1 execute pdf2zh-db --local --persist-to "$WRANGLER_PERSIST_DIR" --command "SELECT encrypted_api_key FROM user_llm_settings WHERE user_id = 'user-1'" -c wrangler.e2e.toml --json | python3 -c "import sys, json; print(json.load(sys.stdin)[0]['results'][0]['encrypted_api_key'])")"
-JOB_CIPHER="$(cd "$V2_DIR/worker" && npx wrangler d1 execute pdf2zh-db --local --persist-to "$WRANGLER_PERSIST_DIR" --command "SELECT encrypted_api_key_snapshot FROM jobs WHERE id = '${JOB_ID}'" -c wrangler.e2e.toml --json | python3 -c "import sys, json; print(json.load(sys.stdin)[0]['results'][0]['encrypted_api_key_snapshot'])")"
+USER_CIPHER="$(cd "$V2_DIR/worker" && npx wrangler d1 execute pdf2zh-db --local --persist-to "$WRANGLER_PERSIST_DIR" --command "SELECT encrypted_api_key FROM user_llm_settings WHERE user_id = 'user-1'" -c "$TMP_WRANGLER" --json | python3 -c "import sys, json; print(json.load(sys.stdin)[0]['results'][0]['encrypted_api_key'])")"
+JOB_CIPHER="$(cd "$V2_DIR/worker" && npx wrangler d1 execute pdf2zh-db --local --persist-to "$WRANGLER_PERSIST_DIR" --command "SELECT encrypted_api_key_snapshot FROM jobs WHERE id = '${JOB_ID}'" -c "$TMP_WRANGLER" --json | python3 -c "import sys, json; print(json.load(sys.stdin)[0]['results'][0]['encrypted_api_key_snapshot'])")"
 
 if [ -z "$USER_CIPHER" ] || [ "$USER_CIPHER" = "None" ]; then
   echo "❌ user_llm_settings ciphertext is empty"

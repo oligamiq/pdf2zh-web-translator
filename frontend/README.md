@@ -60,6 +60,6 @@ Runs Playwright E2E tests. Make sure you install playwright dependencies first (
 To deploy from the root of the project:
 
 ```bash
-cd /srv/pdf2zh-web/v2
+cd /path/to/pdf2zh-web-translator
 npm run deploy:frontend
 ```

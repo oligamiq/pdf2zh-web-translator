@@ -78,7 +78,7 @@
 
 すべての設定値や環境変数、ディレクトリを埋め終わったら、破壊的操作を伴わない以下のスクリプトで安全にチェックできます。
 ```bash
-cd /srv/pdf2zh-web/v2
+cd /path/to/pdf2zh-web-translator
 npm install
 npm run verify
 ```

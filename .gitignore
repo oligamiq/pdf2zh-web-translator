@@ -57,3 +57,11 @@ gh_*
 __pycache__/
 *.py[cod]
 crane
+*.pyc
+*.orig
+frontend/crc-output.json
+/pc-api/pc-api
+
+/logs_deploy/
+/logs_mig/
+/run_logs/

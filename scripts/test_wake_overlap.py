@@ -53,7 +53,7 @@ async def claim():
         transport = httpx.ASGITransport(app=pc_api_app)
         # Cannot await directly here since httpx async client might block if we don't do it right, but this is fine in a test
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            await client.post("/internal/wake")
+            await client.post("/internal/wake", headers={"X-Proxy-Secret": "test-proxy-secret"})
         inject_wake = False
         return {}
         
@@ -77,6 +77,16 @@ async def attempts(job_id: str):
 async def stats(job_id: str):
     return {"success": True}
 
+@worker_app.post("/agent/jobs/{job_id}/succeeded")
+async def succeeded(job_id: str):
+    finish_timestamps.append(time.time())
+    return {"success": True}
+
+@worker_app.post("/agent/jobs/{job_id}/failed")
+async def failed(job_id: str):
+    finish_timestamps.append(time.time())
+    return {"success": True}
+
 async def mock_do_translate_async_stream(settings, input_path):
     yield {"type": "progress_start", "percent": 0}
     await asyncio.sleep(2.0)  # Simulate 2 seconds of translation
@@ -86,6 +96,7 @@ async def test_wake_overlap():
     # Setup test environment
     os.environ["WORKER_API_BASE_URL"] = "http://localhost:8001"
     os.environ["AGENT_TOKEN"] = "test-token"
+    os.environ["PROXY_SECRET"] = "test-proxy-secret"
     os.environ["PC_AGENT_MODE"] = "mock"
     os.environ["WORKER_API_BASE_URL_MOCK"] = "http://localhost:8001"
     
@@ -115,7 +126,7 @@ async def test_wake_overlap():
         
         transport = httpx.ASGITransport(app=pc_api_app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            await client.post("/internal/wake")
+            await client.post("/internal/wake", headers={"X-Proxy-Secret": "test-proxy-secret"})
             
         await asyncio.sleep(7.0)
         
@@ -127,7 +138,7 @@ async def test_wake_overlap():
         
         # Wake agent from current idle
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            await client.post("/internal/wake")
+            await client.post("/internal/wake", headers={"X-Proxy-Secret": "test-proxy-secret"})
             
         await asyncio.sleep(3.0)
         
