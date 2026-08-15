@@ -190,9 +190,14 @@ jobs:
     uses: ./.github/workflows/prod-smoke.yml
     secrets: inherit
 
+  deploy-frontend:
+    needs: smoke
+    uses: ./.github/workflows/deploy-frontend.yml
+    secrets: inherit
+
   finalize:
     needs:
-      - smoke
+      - deploy-frontend
       - backend-image
     runs-on: ubuntu-latest
 
@@ -237,13 +242,16 @@ jobs:
           needs.deploy-backend.result == 'failure' ||
           needs.deploy-backend.result == 'cancelled' ||
           needs.smoke.result == 'failure' ||
-          needs.smoke.result == 'cancelled'
+          needs.smoke.result == 'cancelled' ||
+          needs.deploy-frontend.result == 'failure' ||
+          needs.deploy-frontend.result == 'cancelled'
         )
       }}
 
     needs:
       - deploy-backend
       - smoke
+      - deploy-frontend
       - backend-image
 
     runs-on: ubuntu-latest
