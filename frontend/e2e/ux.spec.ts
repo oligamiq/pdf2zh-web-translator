@@ -124,6 +124,19 @@ test.describe('UX Improvements', () => {
     await expect(page.getByTestId('settings-message')).toContainText('Test failed: API key is not set.');
   });
 
+  test('should not report API online when health endpoint returns HTML', async ({ page }) => {
+    await page.route('**/healthz', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: '<!DOCTYPE html><html><body>Pages fallback</body></html>',
+      });
+    });
+
+    await page.goto('/app');
+    await expect(page.getByText(/API:.*オフライン \/ エラー:/)).toBeVisible();
+  });
+
   test('should display offline badge', async ({ page }) => {
     await page.route('**/health/pc-api', async route => {
       await route.fulfill({ 

@@ -1,6 +1,7 @@
 import { currentUser, setCurrentUser } from './authState';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const PRODUCTION_API_BASE_URL = 'https://pdftr.oligami.workers.dev';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? PRODUCTION_API_BASE_URL : '');
 
 type PublicJobReceipts = Record<string, string>;
 
@@ -106,7 +107,11 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}, forc
 }
 
 export async function checkHealth() {
-  return apiFetch('/healthz').then(r => r.text());
+  const data = await apiFetch('/healthz').then(r => r.json());
+  if (!data || data.ok !== true) {
+    throw new Error('API health response is invalid');
+  }
+  return data;
 }
 
 export async function checkPcHealth() {

@@ -54,6 +54,11 @@ export async function setupDefaultApiMocks(page: Page) {
     return route.fulfill({ json: { maxPdfSize: 10 * 1024 * 1024, maxDailyPages: 50, remainingPages: 50 } });
   });
 
+  await page.route('**/healthz', async route => {
+    if (route.request().resourceType() === 'document') return route.fallback();
+    return route.fulfill({ json: { ok: true } });
+  });
+
   await page.route('**/health/pc-api', async route => {
     if (route.request().resourceType() === 'document') return route.fallback();
     return route.fulfill({ json: { ok: true } });

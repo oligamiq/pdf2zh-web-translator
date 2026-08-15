@@ -15,15 +15,21 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
   let dragCounter = 0;
 
   const isGuest = () => authReady() && !currentUser();
+  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY ||
+    (import.meta.env.MODE === 'e2e' ? '1x00000000000000000000AA' : '');
 
   onMount(() => {
     // Turnstile logic...
     const renderTurnstile = () => {
+      if (!turnstileSiteKey) {
+        setError('Turnstile configuration is missing.');
+        return;
+      }
       // @ts-ignore
       if (window.turnstile && document.getElementById('turnstile-container')) {
         // @ts-ignore
         window.turnstile.render('#turnstile-container', {
-          sitekey: import.meta.env.VITE_TURNSTILE_SITE_KEY || '1x00000000000000000000AA',
+          sitekey: turnstileSiteKey,
           callback: function(token: string) {
             setTurnstileToken(token);
           }
