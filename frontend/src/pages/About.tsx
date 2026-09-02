@@ -18,7 +18,7 @@ export default function About() {
           <li>最大PDFサイズ: 5 MiB</li>
           <li>1日の変換上限: 3回</li>
         </ul>
-        <p><strong>ログイン中:</strong></p>
+        <p><strong>ログイン中（通常）:</strong></p>
         <ul>
           <li>最大PDFサイズ: 20 MiB</li>
           <li>1日の変換上限: 10回</li>

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { createRemoteJWKSet, jwtVerify, createLocalJWKSet } from 'jose'
-import { isRetentionExemptIdentity, retentionDaysForScope, pdfViewTokenMessage, isExpiredAt } from './retention'
+import { isRetentionExemptIdentity, isServiceLimitExemptIdentity, retentionDaysForScope, usageLimitsForScope, pdfViewTokenMessage, isExpiredAt } from './retention'
 
 function isOpenAICompatibleProvider(providerType: string | null | undefined): boolean {
   return providerType === "openai_compatible" || providerType === "openaicompatible";
@@ -867,7 +867,7 @@ app.get('/limits', async (c) => {
     try {
       const identity = await verifyFirebaseIdentity(token, c.env.FIREBASE_PROJECT_ID, c.env.AUTH_MODE || 'firebase', c.env);
       uid = identity.uid;
-      retentionExempt = isRetentionExemptIdentity(identity.email, identity.emailVerified);
+      retentionExempt = isServiceLimitExemptIdentity(identity.email, identity.emailVerified);
       if (retentionExempt) {
         await c.env.DB.prepare(`
           UPDATE jobs
@@ -884,8 +884,8 @@ app.get('/limits', async (c) => {
   }
 
   const isGuest = ownerType === 'public';
-  const MAX_PDF_SIZE = isGuest ? 5 * 1024 * 1024 : 20 * 1024 * 1024;
-  const MAX_JOBS_PER_DAY = isGuest ? 3 : 10;
+  const usageLimitExempt = !isGuest && retentionExempt;
+  const { pdfMaxBytes: MAX_PDF_SIZE, jobsPerDay: MAX_JOBS_PER_DAY } = usageLimitsForScope(isGuest, usageLimitExempt);
   const limitScope = isGuest ? 'public' : 'authenticated';
 
   let subjectHash = '';
@@ -905,7 +905,8 @@ app.get('/limits', async (c) => {
     pdf_max_bytes: MAX_PDF_SIZE,
     jobs_per_day: MAX_JOBS_PER_DAY,
     jobs_used_today: jobsUsedToday,
-    jobs_remaining_today: Math.max(0, MAX_JOBS_PER_DAY - jobsUsedToday),
+    jobs_remaining_today: MAX_JOBS_PER_DAY === null ? null : Math.max(0, MAX_JOBS_PER_DAY - jobsUsedToday),
+    usage_limit_exempt: usageLimitExempt,
     retention_days: retentionDaysForScope(isGuest, retentionExempt),
     retention_exempt: retentionExempt,
     public_job_expiry_hours: 24
@@ -924,7 +925,7 @@ app.post('/jobs', async (c) => {
       try {
         const identity = await verifyFirebaseIdentity(token, c.env.FIREBASE_PROJECT_ID, c.env.AUTH_MODE || 'firebase', c.env);
         uid = identity.uid;
-        retentionExempt = isRetentionExemptIdentity(identity.email, identity.emailVerified);
+        retentionExempt = isServiceLimitExemptIdentity(identity.email, identity.emailVerified);
         ownerType = 'firebase';
       } catch (e) {
         return c.json({ error: 'Unauthorized' }, 401);
@@ -960,11 +961,11 @@ app.post('/jobs', async (c) => {
       : 'ja';
 
     const isGuest = ownerType === 'public';
-    const MAX_PDF_SIZE = isGuest ? 5 * 1024 * 1024 : 20 * 1024 * 1024;
-    const MAX_JOBS_PER_DAY = isGuest ? 3 : 10;
+    const usageLimitExempt = !isGuest && retentionExempt;
+    const { pdfMaxBytes: MAX_PDF_SIZE, jobsPerDay: MAX_JOBS_PER_DAY } = usageLimitsForScope(isGuest, usageLimitExempt);
     const limitScope = isGuest ? 'public' : 'authenticated';
 
-    if (file.size > MAX_PDF_SIZE) {
+    if (MAX_PDF_SIZE !== null && file.size > MAX_PDF_SIZE) {
       return c.json({
         error: 'file_too_large',
         message: isGuest ? "PDF file is too large. Guest users can upload up to 5 MiB." : "PDF file is too large. Logged-in users can upload up to 20 MiB."
@@ -1003,7 +1004,7 @@ app.post('/jobs', async (c) => {
     const usageRecord = await c.env.DB.prepare(`SELECT jobs_created FROM usage_limits WHERE scope = ? AND subject_hash = ? AND day = ?`).bind(limitScope, subjectHash, todayDate).first();
     const jobsUsedToday = (usageRecord?.jobs_created as number) || 0;
 
-    if (jobsUsedToday >= MAX_JOBS_PER_DAY) {
+    if (MAX_JOBS_PER_DAY !== null && jobsUsedToday >= MAX_JOBS_PER_DAY) {
       return c.json({
         error: 'rate_limit_exceeded',
         message: `Daily job limit exceeded. ${isGuest ? 'Guest' : 'Logged-in'} users can create up to ${MAX_JOBS_PER_DAY} jobs per day.`,
@@ -1291,17 +1292,26 @@ app.post('/jobs', async (c) => {
         await c.env.DB.batch(stmts);
     }
 
-    // Reserve the daily quota atomically. The earlier SELECT is only a fast-path;
-    // this conditional UPSERT closes the race between concurrent uploads.
-    const quotaReservation = await c.env.DB.prepare(
-      `INSERT INTO usage_limits (scope, subject_hash, day, jobs_created, bytes_uploaded, updated_at)
-       VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(scope, subject_hash, day) DO UPDATE SET
-         jobs_created = usage_limits.jobs_created + 1,
-         bytes_uploaded = usage_limits.bytes_uploaded + excluded.bytes_uploaded,
-         updated_at = CURRENT_TIMESTAMP
-       WHERE usage_limits.jobs_created < ?`
-    ).bind(limitScope, subjectHash, todayDate, fileSizeBytes, MAX_JOBS_PER_DAY).run();
+    // Reserve/record daily usage atomically. Exempt users are still metered for observability,
+    // but the row update has no daily-count ceiling.
+    const quotaReservation = MAX_JOBS_PER_DAY === null
+      ? await c.env.DB.prepare(
+          `INSERT INTO usage_limits (scope, subject_hash, day, jobs_created, bytes_uploaded, updated_at)
+           VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(scope, subject_hash, day) DO UPDATE SET
+             jobs_created = usage_limits.jobs_created + 1,
+             bytes_uploaded = usage_limits.bytes_uploaded + excluded.bytes_uploaded,
+             updated_at = CURRENT_TIMESTAMP`
+        ).bind(limitScope, subjectHash, todayDate, fileSizeBytes).run()
+      : await c.env.DB.prepare(
+          `INSERT INTO usage_limits (scope, subject_hash, day, jobs_created, bytes_uploaded, updated_at)
+           VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(scope, subject_hash, day) DO UPDATE SET
+             jobs_created = usage_limits.jobs_created + 1,
+             bytes_uploaded = usage_limits.bytes_uploaded + excluded.bytes_uploaded,
+             updated_at = CURRENT_TIMESTAMP
+           WHERE usage_limits.jobs_created < ?`
+        ).bind(limitScope, subjectHash, todayDate, fileSizeBytes, MAX_JOBS_PER_DAY).run();
 
     if (quotaReservation.meta.changes !== 1) {
       await c.env.DB.batch([

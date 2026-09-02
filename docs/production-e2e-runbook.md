@@ -170,4 +170,5 @@ Frontend側の障害時は、Cloudflare Pages のダッシュボードから過�
 ---
 ※ **ZIPダウンロードと期限について**:
 現仕様ではフロントのボタンは「ZIPをダウンロード」であり、APIは `application/zip` を返します。通常のログインユーザーは完了から7日経過したものがD1上の期限判定で `410 Gone` になります。保持期限免除の管理アカウントにはこの7日判定を適用しません。
+同じ管理アカウントはアプリ側のログインユーザー向け PDF 20 MiB 上限と1日10件上限も免除します。`GET /limits` では `pdf_max_bytes=null`, `jobs_per_day=null`, `usage_limit_exempt=true` を返します。利用量は監視用に `usage_limits` へ記録し続けます。
 HDD側のファイル実体のcleanupロジックは今回未実装です。将来的にcron等による自動削除を追加する場合は、D1 の `retention_exempt = 1` のジョブを必ず除外してください。

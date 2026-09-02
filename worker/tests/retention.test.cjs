@@ -2,7 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   isRetentionExemptIdentity,
+  isServiceLimitExemptIdentity,
   retentionDaysForScope,
+  usageLimitsForScope,
   pdfViewTokenMessage,
   isExpiredAt,
 } = require('../.tmp/retention-test/retention.js');
@@ -14,10 +16,24 @@ test('only the verified admin email is retention exempt', () => {
   assert.equal(isRetentionExemptIdentity('other@example.com', true), false);
 });
 
+test('only the verified admin email is service-limit exempt', () => {
+  assert.equal(isServiceLimitExemptIdentity('nziq53@gmail.com', true), true);
+  assert.equal(isServiceLimitExemptIdentity('NZIq53@GMAIL.COM ', true), true);
+  assert.equal(isServiceLimitExemptIdentity('nziq53@gmail.com', false), false);
+  assert.equal(isServiceLimitExemptIdentity('other@example.com', true), false);
+});
+
 test('ordinary retention stays unchanged', () => {
   assert.equal(retentionDaysForScope(true, false), 1);
   assert.equal(retentionDaysForScope(false, false), 7);
   assert.equal(retentionDaysForScope(false, true), null);
+});
+
+test('usage limits are removed only for the exempt authenticated account', () => {
+  assert.deepEqual(usageLimitsForScope(true, false), { pdfMaxBytes: 5 * 1024 * 1024, jobsPerDay: 3 });
+  assert.deepEqual(usageLimitsForScope(false, false), { pdfMaxBytes: 20 * 1024 * 1024, jobsPerDay: 10 });
+  assert.deepEqual(usageLimitsForScope(false, true), { pdfMaxBytes: null, jobsPerDay: null });
+  assert.deepEqual(usageLimitsForScope(true, true), { pdfMaxBytes: 5 * 1024 * 1024, jobsPerDay: 3 });
 });
 
 test('retention-exempt view tokens do not depend on the old expiry', () => {

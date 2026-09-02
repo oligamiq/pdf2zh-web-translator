@@ -53,6 +53,10 @@ WRANGLER="$ROOT_DIR/node_modules/.bin/wrangler"
     VALUES
       ('ordinary-old','mock-user-123','ordinary.pdf','completed',datetime('now','-8 days'),datetime('now','-8 days'),datetime('now','-1 day'),'firebase',0),
       ('admin-old','mock-retention-exempt','admin.pdf','completed',datetime('now','-8 days'),datetime('now','-8 days'),datetime('now','-1 day'),'firebase',0);
+    INSERT INTO usage_limits (scope, subject_hash, day, jobs_created, bytes_uploaded)
+    VALUES
+      ('authenticated','mock-user-123',date('now'),10,0),
+      ('authenticated','mock-retention-exempt',date('now'),10,0);
   " >/dev/null
 )
 
@@ -86,14 +90,43 @@ admin_jobs="$(curl -fsS -H 'Authorization: Bearer mock-retention-exempt' "$WORKE
 python3 - "$ordinary_limits" "$admin_limits" "$ordinary_jobs" "$admin_jobs" <<'PYCHECK'
 import json, sys
 ordinary_limits, admin_limits, ordinary_jobs, admin_jobs = map(json.loads, sys.argv[1:])
+assert ordinary_limits['pdf_max_bytes'] == 20 * 1024 * 1024, ordinary_limits
+assert ordinary_limits['jobs_per_day'] == 10, ordinary_limits
+assert ordinary_limits['usage_limit_exempt'] is False, ordinary_limits
 assert ordinary_limits['retention_days'] == 7, ordinary_limits
 assert ordinary_limits['retention_exempt'] is False, ordinary_limits
+assert admin_limits['pdf_max_bytes'] is None, admin_limits
+assert admin_limits['jobs_per_day'] is None, admin_limits
+assert admin_limits['jobs_remaining_today'] is None, admin_limits
+assert admin_limits['usage_limit_exempt'] is True, admin_limits
 assert admin_limits['retention_days'] is None, admin_limits
 assert admin_limits['retention_exempt'] is True, admin_limits
 assert ordinary_jobs == [], ordinary_jobs
 assert [job['id'] for job in admin_jobs] == ['admin-old'], admin_jobs
 assert admin_jobs[0]['view_token'], admin_jobs
 PYCHECK
+
+python3 - "$TMP_DIR/small.pdf" "$TMP_DIR/large.pdf" <<'PYPDF'
+from pathlib import Path
+import sys
+small, large = map(Path, sys.argv[1:])
+small.write_bytes(b'%PDF-1.4\n%limit-smoke\n')
+with large.open('wb') as f:
+    f.write(b'%PDF-1.4\n%limit-smoke\n')
+    f.truncate(21 * 1024 * 1024)
+PYPDF
+
+ordinary_quota_status="$(curl -sS -o "$TMP_DIR/ordinary-quota.json" -w '%{http_code}' -H 'Authorization: Bearer mock-normal' -F "pdf=@$TMP_DIR/small.pdf;type=application/pdf" "$WORKER_URL/jobs")"
+[ "$ordinary_quota_status" = '429' ] || { echo "ordinary daily limit expected 429, got $ordinary_quota_status" >&2; cat "$TMP_DIR/ordinary-quota.json" >&2; exit 1; }
+admin_quota_status="$(curl -sS -o "$TMP_DIR/admin-quota.json" -w '%{http_code}' -H 'Authorization: Bearer mock-retention-exempt' -F "pdf=@$TMP_DIR/small.pdf;type=application/pdf" "$WORKER_URL/jobs")"
+[ "$admin_quota_status" = '400' ] || { echo "exempt daily limit should be bypassed and reach provider validation, got $admin_quota_status" >&2; cat "$TMP_DIR/admin-quota.json" >&2; exit 1; }
+grep -q 'api_key_required' "$TMP_DIR/admin-quota.json" || { echo 'exempt daily-limit request did not reach provider validation' >&2; cat "$TMP_DIR/admin-quota.json" >&2; exit 1; }
+
+ordinary_size_status="$(curl -sS -o "$TMP_DIR/ordinary-size.json" -w '%{http_code}' -H 'Authorization: Bearer mock-normal' -F "pdf=@$TMP_DIR/large.pdf;type=application/pdf" "$WORKER_URL/jobs")"
+[ "$ordinary_size_status" = '413' ] || { echo "ordinary 20 MiB limit expected 413, got $ordinary_size_status" >&2; cat "$TMP_DIR/ordinary-size.json" >&2; exit 1; }
+admin_size_status="$(curl -sS -o "$TMP_DIR/admin-size.json" -w '%{http_code}' -H 'Authorization: Bearer mock-retention-exempt' -F "pdf=@$TMP_DIR/large.pdf;type=application/pdf" "$WORKER_URL/jobs")"
+[ "$admin_size_status" = '400' ] || { echo "exempt size limit should be bypassed and reach provider validation, got $admin_size_status" >&2; cat "$TMP_DIR/admin-size.json" >&2; exit 1; }
+grep -q 'api_key_required' "$TMP_DIR/admin-size.json" || { echo 'exempt size-limit request did not reach provider validation' >&2; cat "$TMP_DIR/admin-size.json" >&2; exit 1; }
 
 ordinary_status="$(curl -sS -o "$TMP_DIR/ordinary.txt" -w '%{http_code}' -H 'Authorization: Bearer mock-normal' "$WORKER_URL/jobs/ordinary-old/download?type=dual")"
 [ "$ordinary_status" = '410' ] || {
