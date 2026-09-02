@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     finished_at DATETIME,
     error_message TEXT,
     download_expires_at DATETIME,
+    retention_exempt INTEGER NOT NULL DEFAULT 0,
     llm_source TEXT,
     llm_base_url TEXT,
     llm_model TEXT,

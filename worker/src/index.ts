@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { createRemoteJWKSet, jwtVerify, createLocalJWKSet } from 'jose'
+import { isRetentionExemptIdentity, retentionDaysForScope, pdfViewTokenMessage, isExpiredAt } from './retention'
 
 function isOpenAICompatibleProvider(providerType: string | null | undefined): boolean {
   return providerType === "openai_compatible" || providerType === "openaicompatible";
@@ -276,6 +277,7 @@ async function fetchPrivateApi(
 
 type Variables = {
   uid: string
+  retentionExempt: boolean
 }
 
 const app = new Hono<{ Bindings: Env, Variables: Variables }>()
@@ -330,10 +332,19 @@ app.get('/healthz', (c) => {
 const JWKS_URI = 'https://www.googleapis.com/robot/v1/metadata/jwk/securetoken@system.gserviceaccount.com'
 const JWKS = createRemoteJWKSet(new URL(JWKS_URI))
 
-async function verifyFirebaseToken(token: string, projectId: string, authMode: string, env: Env): Promise<string> {
+type FirebaseIdentity = {
+  uid: string
+  email: string | null
+  emailVerified: boolean
+}
+
+async function verifyFirebaseIdentity(token: string, projectId: string, authMode: string, env: Env): Promise<FirebaseIdentity> {
   if (!token) throw new Error("No token")
   if (authMode === 'mock') {
-    if (token.startsWith('mock-')) return 'mock-user-123'
+    if (token === 'mock-retention-exempt') {
+      return { uid: 'mock-retention-exempt', email: 'nziq53@gmail.com', emailVerified: true }
+    }
+    if (token.startsWith('mock-')) return { uid: 'mock-user-123', email: null, emailVerified: false }
     throw new Error('Invalid mock token')
   }
 
@@ -359,7 +370,11 @@ async function verifyFirebaseToken(token: string, projectId: string, authMode: s
       throw new Error("Missing sub in token")
     }
 
-    return payload.sub
+    return {
+      uid: payload.sub,
+      email: typeof payload.email === 'string' ? payload.email : null,
+      emailVerified: payload.email_verified === true,
+    }
   } catch (e: any) {
     throw new Error(`Invalid Firebase token: ${e.message}`)
   }
@@ -373,8 +388,19 @@ const authMiddleware = async (c: any, next: any) => {
   }
   const token = authHeader.split(' ')[1]
   try {
-    const uid = await verifyFirebaseToken(token, c.env.FIREBASE_PROJECT_ID, c.env.AUTH_MODE || 'firebase', c.env)
-    c.set('uid', uid)
+    const identity = await verifyFirebaseIdentity(token, c.env.FIREBASE_PROJECT_ID, c.env.AUTH_MODE || 'firebase', c.env)
+    const retentionExempt = isRetentionExemptIdentity(identity.email, identity.emailVerified)
+    c.set('uid', identity.uid)
+    c.set('retentionExempt', retentionExempt)
+    if (retentionExempt) {
+      await c.env.DB.prepare(`
+        UPDATE jobs
+        SET retention_exempt = 1, download_expires_at = NULL
+        WHERE user_id = ?
+          AND owner_type <> 'public'
+          AND (retention_exempt <> 1 OR download_expires_at IS NOT NULL)
+      `).bind(identity.uid).run()
+    }
     await next()
   } catch (e) {
     return c.json({ error: 'Unauthorized' }, 401)
@@ -834,11 +860,23 @@ app.get('/limits', async (c) => {
   const authHeader = c.req.header('Authorization');
   let uid: string | null = null;
   let ownerType = 'public';
+  let retentionExempt = false;
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
     try {
-      uid = await verifyFirebaseToken(token, c.env.FIREBASE_PROJECT_ID, c.env.AUTH_MODE || 'firebase', c.env);
+      const identity = await verifyFirebaseIdentity(token, c.env.FIREBASE_PROJECT_ID, c.env.AUTH_MODE || 'firebase', c.env);
+      uid = identity.uid;
+      retentionExempt = isRetentionExemptIdentity(identity.email, identity.emailVerified);
+      if (retentionExempt) {
+        await c.env.DB.prepare(`
+          UPDATE jobs
+          SET retention_exempt = 1, download_expires_at = NULL
+          WHERE user_id = ?
+            AND owner_type <> 'public'
+            AND (retention_exempt <> 1 OR download_expires_at IS NOT NULL)
+        `).bind(identity.uid).run();
+      }
       ownerType = 'authenticated';
     } catch (e) {
       // ignore
@@ -868,7 +906,8 @@ app.get('/limits', async (c) => {
     jobs_per_day: MAX_JOBS_PER_DAY,
     jobs_used_today: jobsUsedToday,
     jobs_remaining_today: Math.max(0, MAX_JOBS_PER_DAY - jobsUsedToday),
-    retention_days: isGuest ? 1 : 7,
+    retention_days: retentionDaysForScope(isGuest, retentionExempt),
+    retention_exempt: retentionExempt,
     public_job_expiry_hours: 24
   });
 });
@@ -878,11 +917,14 @@ app.post('/jobs', async (c) => {
     const authHeader = c.req.header('Authorization');
     let uid: string | null = null;
     let ownerType = 'public';
+    let retentionExempt = false;
 
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
       try {
-        uid = await verifyFirebaseToken(token, c.env.FIREBASE_PROJECT_ID, c.env.AUTH_MODE || 'firebase', c.env);
+        const identity = await verifyFirebaseIdentity(token, c.env.FIREBASE_PROJECT_ID, c.env.AUTH_MODE || 'firebase', c.env);
+        uid = identity.uid;
+        retentionExempt = isRetentionExemptIdentity(identity.email, identity.emailVerified);
         ownerType = 'firebase';
       } catch (e) {
         return c.json({ error: 'Unauthorized' }, 401);
@@ -1228,14 +1270,14 @@ app.post('/jobs', async (c) => {
         llm_source, llm_base_url, llm_model,
         encrypted_api_key_snapshot, api_key_snapshot_iv, api_key_key_version,
         owner_type, public_receipt_hash, public_client_hash, public_ip_hash,
-        public_expires_at, file_size_bytes, turnstile_verified, llm_credential_mode, target_language
-      ) VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        public_expires_at, file_size_bytes, turnstile_verified, llm_credential_mode, target_language, retention_exempt
+      ) VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       id, uid || 'public_user', file.name,
       llm_source, llm_base_url, llm_model,
       encrypted_api_key_snapshot, api_key_snapshot_iv, api_key_key_version,
       ownerType, publicReceiptHash, publicClientHash, publicIpHash,
-      publicExpiresAt, fileSizeBytes, turnstileVerified, llm_credential_mode, targetLanguage
+      publicExpiresAt, fileSizeBytes, turnstileVerified, llm_credential_mode, targetLanguage, retentionExempt ? 1 : 0
     ).run()
 
     // Insert into job_api_provider_snapshots
@@ -1382,13 +1424,18 @@ app.delete('/public/jobs/:id', async (c) => {
 
 app.get('/jobs', authMiddleware, async (c) => {
   const uid = c.get('uid') as string
+  const retentionExempt = c.get('retentionExempt') as boolean
+  const historyCutoff = retentionExempt ? '' : " AND created_at >= datetime('now', '-7 days')"
   const { results } = await c.env.DB.prepare(
-    `SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, execution_metadata, active_provider_name FROM jobs WHERE user_id = ? AND deleted_at IS NULL AND created_at >= datetime('now', '-7 days') ORDER BY created_at DESC`
+    `SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, execution_metadata, active_provider_name FROM jobs WHERE user_id = ? AND deleted_at IS NULL${historyCutoff} ORDER BY created_at DESC`
   ).bind(uid).all()
 
   const resultsWithTokens = await Promise.all(results.map(async (job: any) => ({
     ...job,
-    view_token: await hmacSha256Hex(securitySecret(c.env, 'pdf-view'), `pdf-job:v1:${job.id}:${job.download_expires_at || ''}`)
+    view_token: await hmacSha256Hex(
+      securitySecret(c.env, 'pdf-view'),
+      pdfViewTokenMessage(job.id, job.download_expires_at as string | null, retentionExempt),
+    )
   })))
   return c.json(resultsWithTokens)
 })
@@ -1399,8 +1446,11 @@ app.get('/jobs/:id', authMiddleware, async (c) => {
   const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, owner_type, llm_source, llm_model, llm_credential_mode, progress_percent, progress_phase, progress_message, log_tail, execution_metadata, active_provider_name FROM jobs WHERE id = ? AND user_id = ? AND deleted_at IS NULL`).bind(id, uid).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
 
-  const exp = job.download_expires_at || '';
-  const view_token = await hmacSha256Hex(securitySecret(c.env, 'pdf-view'), `pdf-job:v1:${job.id}:${exp}`)
+  const retentionExempt = c.get('retentionExempt') as boolean
+  const view_token = await hmacSha256Hex(
+    securitySecret(c.env, 'pdf-view'),
+    pdfViewTokenMessage(job.id as string, job.download_expires_at as string | null, retentionExempt),
+  )
   if (job && typeof job.execution_metadata === 'string') { try { job.execution_metadata = JSON.parse(job.execution_metadata); } catch(e) { job.execution_metadata = null; } }
   return c.json({ ...job, view_token })
 })
@@ -1439,11 +1489,9 @@ app.get('/jobs/:id/download', authMiddleware, async (c) => {
   if (!job) return c.json({ error: 'Not found' }, 404)
   if (job.status !== 'completed' && job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 409)
 
-  if (job.download_expires_at) {
-    const expiresAt = new Date(job.download_expires_at as string).getTime();
-    if (Date.now() > expiresAt) {
-      return c.json({ error: 'Download expired' }, 410)
-    }
+  const retentionExempt = c.get('retentionExempt') as boolean
+  if (isExpiredAt(job.download_expires_at as string | null, retentionExempt)) {
+    return c.json({ error: 'Download expired' }, 410)
   }
 
   const type = c.req.query('type') || 'zip';
@@ -1584,10 +1632,11 @@ app.get('/jobs/:id/files/:kind', async (c) => {
 
   if (!receipt) return c.json({ error: 'Missing receipt' }, 401)
 
-  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, public_expires_at, owner_type, public_receipt_hash FROM jobs WHERE id = ? AND deleted_at IS NULL`).bind(id).first()
+  const job = await c.env.DB.prepare(`SELECT id, user_id, original_filename, status, error_message, file_size_bytes, turnstile_verified, created_at, started_at, finished_at, download_expires_at, public_expires_at, owner_type, public_receipt_hash, retention_exempt FROM jobs WHERE id = ? AND deleted_at IS NULL`).bind(id).first()
   if (!job) return c.json({ error: 'Not found' }, 404)
 
   let valid = false;
+  let retentionExemptToken = false;
   if (job.owner_type === 'public') {
     const publicExpiresAt = typeof job.public_expires_at === 'string' ? Date.parse(job.public_expires_at) : NaN;
     if (!Number.isFinite(publicExpiresAt) || Date.now() >= publicExpiresAt) {
@@ -1596,20 +1645,26 @@ app.get('/jobs/:id/files/:kind', async (c) => {
     const publicReceiptHash = await hmacSha256Hex(securitySecret(c.env, 'receipt'), receipt);
     valid = timingSafeEqual(job.public_receipt_hash, publicReceiptHash);
   } else if (job.owner_type === 'user' || job.owner_type === 'firebase') {
-    const exp = job.download_expires_at || '';
-    const userReceiptHash = await hmacSha256Hex(securitySecret(c.env, 'pdf-view'), `pdf-job:v1:${job.id}:${exp}`);
-    valid = timingSafeEqual(receipt, userReceiptHash);
+    const normalReceiptHash = await hmacSha256Hex(
+      securitySecret(c.env, 'pdf-view'),
+      pdfViewTokenMessage(job.id as string, job.download_expires_at as string | null, false),
+    );
+    if (job.retention_exempt === 1) {
+      const exemptReceiptHash = await hmacSha256Hex(
+        securitySecret(c.env, 'pdf-view'),
+        pdfViewTokenMessage(job.id as string, job.download_expires_at as string | null, true),
+      );
+      retentionExemptToken = timingSafeEqual(receipt, exemptReceiptHash);
+    }
+    valid = retentionExemptToken || timingSafeEqual(receipt, normalReceiptHash);
   }
 
   if (!valid) return c.json({ error: 'Unauthorized' }, 401)
 
   if (job.status !== 'completed' && job.status !== 'succeeded') return c.json({ error: 'Not ready' }, 404)
 
-  if (job.download_expires_at) {
-    const expiresAt = new Date(job.download_expires_at as string).getTime();
-    if (Date.now() > expiresAt) {
-      return c.json({ error: 'Download expired' }, 410)
-    }
+  if (isExpiredAt(job.download_expires_at as string | null, retentionExemptToken)) {
+    return c.json({ error: 'Download expired' }, 410)
   }
 
   let type = '';
@@ -1913,7 +1968,7 @@ app.post('/agent/jobs/:id/progress', async (c) => {
   } else if (status === 'completed') {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
     await c.env.DB.prepare(
-      `UPDATE jobs SET status = 'completed', finished_at = ?, download_expires_at = ?, progress_percent = ?, progress_phase = ?, progress_message = ?, log_tail = ?, execution_metadata = coalesce(?, execution_metadata), active_provider_name = coalesce(?, active_provider_name) WHERE id = ? AND status = 'running'`
+      `UPDATE jobs SET status = 'completed', finished_at = ?, download_expires_at = CASE WHEN retention_exempt = 1 THEN NULL ELSE ? END, progress_percent = ?, progress_phase = ?, progress_message = ?, log_tail = ?, execution_metadata = coalesce(?, execution_metadata), active_provider_name = coalesce(?, active_provider_name) WHERE id = ? AND status = 'running'`
     ).bind(now, expiresAt.toISOString(), newPercent, phase, message, logTail, executionMetadata, activeProviderName, id).run()
   } else {
     await c.env.DB.prepare(
@@ -1948,11 +2003,11 @@ app.post('/agent/jobs/:id/succeeded', async (c) => {
 
   if (executionMetadata) {
     await c.env.DB.prepare(
-      `UPDATE jobs SET status = 'completed', finished_at = ?, download_expires_at = ?, progress_percent = 100, progress_phase = 'completed', execution_metadata = COALESCE(?, execution_metadata) WHERE id = ? AND status = 'running'`
+      `UPDATE jobs SET status = 'completed', finished_at = ?, download_expires_at = CASE WHEN retention_exempt = 1 THEN NULL ELSE ? END, progress_percent = 100, progress_phase = 'completed', execution_metadata = COALESCE(?, execution_metadata) WHERE id = ? AND status = 'running'`
     ).bind(now.toISOString(), expiresAt.toISOString(), executionMetadata, id).run()
   } else {
     await c.env.DB.prepare(
-      `UPDATE jobs SET status = 'completed', finished_at = ?, download_expires_at = ?, progress_percent = 100, progress_phase = 'completed' WHERE id = ? AND status = 'running'`
+      `UPDATE jobs SET status = 'completed', finished_at = ?, download_expires_at = CASE WHEN retention_exempt = 1 THEN NULL ELSE ? END, progress_percent = 100, progress_phase = 'completed' WHERE id = ? AND status = 'running'`
     ).bind(now.toISOString(), expiresAt.toISOString(), id).run()
   }
   return c.json({ ok: true })

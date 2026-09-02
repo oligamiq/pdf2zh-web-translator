@@ -173,7 +173,7 @@ JOB_COLUMNS=$(
   npx wrangler d1 execute pdf2zh-db --remote --command "PRAGMA table_info(jobs);"
 )
 
-for col in owner_type public_receipt_hash public_client_hash public_ip_hash public_expires_at file_size_bytes turnstile_verified llm_credential_mode target_language progress_percent deleted_at execution_metadata; do
+for col in owner_type public_receipt_hash public_client_hash public_ip_hash public_expires_at file_size_bytes turnstile_verified llm_credential_mode target_language progress_percent deleted_at execution_metadata retention_exempt; do
   if ! echo "$JOB_COLUMNS" | grep -q "$col"; then
     echo "❌ Column '$col' does not exist in 'jobs' table. Did you apply migrations?"
     exit 1

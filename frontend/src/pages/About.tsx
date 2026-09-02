@@ -37,7 +37,7 @@ export default function About() {
 
       <div class="panel" style="margin-bottom: 24px; padding: 24px;">
         <h2 style="margin-top: 0; color: var(--accent);">データ保持期間</h2>
-        <p>ゲスト利用のファイルは約24時間で削除されます。ログインユーザーの履歴は7日間保持されます。</p>
+        <p>ゲスト利用のファイルは約24時間で期限切れになります。ログインユーザーの履歴は通常7日間保持されます。</p>
       </div>
 
       <div class="panel" style="margin-bottom: 24px; padding: 24px;">

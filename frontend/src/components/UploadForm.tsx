@@ -408,13 +408,17 @@ export default function UploadForm(props: { onUploadSuccess?: () => void }) {
           <summary>
             {limits().scope === 'public' 
               ? `ゲスト利用: ${limits().pdf_max_bytes / (1024 * 1024)} MiB / 1日${limits().jobs_per_day}件 / ${limits().public_job_expiry_hours}時間保存`
-              : `ログイン中: ${limits().pdf_max_bytes / (1024 * 1024)} MiB / 1日${limits().jobs_per_day}件 / ${limits().retention_days}日間保存`
+              : limits().retention_exempt
+                ? `ログイン中: ${limits().pdf_max_bytes / (1024 * 1024)} MiB / 1日${limits().jobs_per_day}件 / 保存期限なし`
+                : `ログイン中: ${limits().pdf_max_bytes / (1024 * 1024)} MiB / 1日${limits().jobs_per_day}件 / ${limits().retention_days}日間保存`
             }
           </summary>
           <p class="guest-limit-details-text">
             {limits().scope === 'public' 
               ? `PDFは${limits().pdf_max_bytes / (1024 * 1024)} MiBまで、1日${limits().jobs_per_day}件まで。結果は${limits().public_job_expiry_hours}時間程度で期限切れになります。`
-              : `PDFは${limits().pdf_max_bytes / (1024 * 1024)} MiBまで、1日${limits().jobs_per_day}件まで。履歴は${limits().retention_days}日間保持されます。`
+              : limits().retention_exempt
+                ? `PDFは${limits().pdf_max_bytes / (1024 * 1024)} MiBまで、1日${limits().jobs_per_day}件まで。履歴の自動保持期限は適用されません。`
+                : `PDFは${limits().pdf_max_bytes / (1024 * 1024)} MiBまで、1日${limits().jobs_per_day}件まで。履歴は${limits().retention_days}日間保持されます。`
             }
           </p>
           <div class="guest-limit-details-links">
