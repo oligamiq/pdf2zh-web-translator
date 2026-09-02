@@ -296,7 +296,7 @@ fi
 (
   cd "$V2_DIR/worker"
   echo "Installing worker deps..."
-  npm install --silent
+  npm install --include=dev --silent
   echo "Running wrangler deploy --dry-run..."
   if ! npx wrangler deploy --dry-run --outdir dist > /dev/null 2>&1; then
      echo "❌ Worker dry-run deploy failed."
@@ -312,7 +312,7 @@ if [ -d "$V2_DIR/frontend" ]; then
   (
     cd "$V2_DIR/frontend"
     echo "Installing frontend deps..."
-    npm install --silent
+    npm install --include=dev --silent
     echo "Building frontend..."
     if ! npm run build > /dev/null 2>&1; then
       echo "❌ Frontend build failed."
