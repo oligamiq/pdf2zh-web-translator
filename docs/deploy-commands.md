@@ -39,9 +39,10 @@ npx wrangler secret put AGENT_TOKEN
 npx wrangler secret put USER_SETTINGS_SECRET
 npx wrangler secret put PUBLIC_RATE_LIMIT_SALT
 npx wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY
+npx wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY_2
 # APIキー未入力時の無料チェーンには PUBLIC_FALLBACK_LLM_ENABLED="true" を設定します。
-# 本番は PUBLIC_FALLBACK_LLM_API_KEY + SiliconFlow API を主系として使用します。
-# 主系が失敗/枠切れの場合は native siliconflow_free へ自動フォールバックします。
+# 本番は PUBLIC_FALLBACK_LLM_API_KEY → PUBLIC_FALLBACK_LLM_API_KEY_2 の順で Ollama Cloud API を使用します。
+# 両方が失敗/枠切れの場合は native siliconflow_free へ自動フォールバックします。
 ```
 
 ## PC Docker (Agent & API)

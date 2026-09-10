@@ -10,6 +10,7 @@ export type PublicFallbackProviderSpec = {
   model: string;
   priority: number;
   usesServerApiKey: boolean;
+  serverApiKeyIndex: number | null;
 };
 
 export function publicFallbackConfigError(
@@ -31,9 +32,9 @@ export function publicFallbackProviderPlan(
   source: string | undefined,
   baseUrl: string | undefined,
   model: string | undefined,
-  hasApiKey: boolean,
+  serverApiKeyCount: number,
 ): PublicFallbackProviderSpec[] | null {
-  if (publicFallbackConfigError(source, baseUrl, model, hasApiKey)) return null;
+  if (publicFallbackConfigError(source, baseUrl, model, serverApiKeyCount > 0)) return null;
   if (source === "siliconflow_free") {
     return [{
       displayName: "SiliconFlow Free",
@@ -42,24 +43,30 @@ export function publicFallbackProviderPlan(
       model: "",
       priority: 1,
       usesServerApiKey: false,
+      serverApiKeyIndex: null,
     }];
   }
+
+  const keyedProviders = Array.from({ length: serverApiKeyCount }, (_, index) => ({
+    displayName: serverApiKeyCount > 1 ? `Public Free Tier ${index + 1}` : "Public Free Tier",
+    providerType: source!,
+    baseUrl: baseUrl!,
+    model: model!,
+    priority: index + 1,
+    usesServerApiKey: true,
+    serverApiKeyIndex: index,
+  }));
+
   return [
-    {
-      displayName: "SiliconFlow Free Tier",
-      providerType: source!,
-      baseUrl: baseUrl!,
-      model: model!,
-      priority: 1,
-      usesServerApiKey: true,
-    },
+    ...keyedProviders,
     {
       displayName: "SiliconFlow Free Fallback",
       providerType: "siliconflow_free",
       baseUrl: "",
       model: "",
-      priority: 2,
+      priority: serverApiKeyCount + 1,
       usesServerApiKey: false,
+      serverApiKeyIndex: null,
     },
   ];
 }

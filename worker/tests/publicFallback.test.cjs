@@ -4,17 +4,18 @@ const { publicFallbackConfigError, publicFallbackProviderPlan } = require('../.t
 
 test('siliconflow_free needs no endpoint, model, or API key', () => {
   assert.equal(publicFallbackConfigError('siliconflow_free', undefined, undefined, false), null);
-  assert.deepEqual(publicFallbackProviderPlan('siliconflow_free', undefined, undefined, false), [{
-    displayName: 'SiliconFlow Free', providerType: 'siliconflow_free', baseUrl: '', model: '', priority: 1, usesServerApiKey: false,
+  assert.deepEqual(publicFallbackProviderPlan('siliconflow_free', undefined, undefined, 0), [{
+    displayName: 'SiliconFlow Free', providerType: 'siliconflow_free', baseUrl: '', model: '', priority: 1, usesServerApiKey: false, serverApiKeyIndex: null,
   }]);
 });
 
-test('keyed SiliconFlow is primary and native free engine is fallback', () => {
-  const plan = publicFallbackProviderPlan('openai_compatible', 'https://api.siliconflow.cn/v1', 'Qwen/Qwen2.5-7B-Instruct', true);
-  assert.equal(plan.length, 2);
-  assert.deepEqual(plan.map(p => [p.providerType, p.priority, p.usesServerApiKey]), [
-    ['openai_compatible', 1, true],
-    ['siliconflow_free', 2, false],
+test('two Ollama Cloud credentials are tried before native free fallback', () => {
+  const plan = publicFallbackProviderPlan('openai_compatible', 'https://ollama.com/v1', 'gemma4:31b-cloud', 2);
+  assert.equal(plan.length, 3);
+  assert.deepEqual(plan.map(p => [p.providerType, p.priority, p.usesServerApiKey, p.serverApiKeyIndex]), [
+    ['openai_compatible', 1, true, 0],
+    ['openai_compatible', 2, true, 1],
+    ['siliconflow_free', 3, false, null],
   ]);
 });
 

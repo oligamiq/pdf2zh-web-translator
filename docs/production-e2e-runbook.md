@@ -42,12 +42,13 @@ openssl rand -base64 32 | npx wrangler secret put USER_SETTINGS_SECRET
 openssl rand -base64 32 | npx wrangler secret put PUBLIC_RATE_LIMIT_SALT
 npx wrangler secret put TURNSTILE_SECRET_KEY
 npx wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY
+npx wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY_2
 ```
 > 期待出力: `Successfully created secret for key PROXY_SECRET/AGENT_TOKEN` 等
 
 ## 8. Worker deploy
 `v2/worker/wrangler.toml` の `AUTH_MODE="firebase"` および `FIREBASE_PROJECT_ID` 等が正しく設定されているか確認し、デプロイします。
-また、APIキー未入力時の無料チェーンを利用する場合は `PUBLIC_FALLBACK_LLM_ENABLED="true"` に設定します。本番では `PUBLIC_FALLBACK_LLM_API_KEY` を使う SiliconFlow API を主系とし、失敗・枠切れ時に native `siliconflow_free` へ自動フォールバックします。
+また、APIキー未入力時の無料チェーンを利用する場合は `PUBLIC_FALLBACK_LLM_ENABLED="true"` に設定します。本番では `PUBLIC_FALLBACK_LLM_API_KEY` → `PUBLIC_FALLBACK_LLM_API_KEY_2` の順で Ollama Cloud API を試し、両方が失敗・枠切れの場合に native `siliconflow_free` へ自動フォールバックします。
 ```bash
 cd /path/to/pdf2zh-web-translator
 npm run deploy:worker

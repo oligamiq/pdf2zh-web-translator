@@ -19,7 +19,7 @@ The application supports two primary usage modes:
    - Rate limited per IP (3/day) and Client ID (1/day).
    - Users can optionally provide a one-time API key for the job (not saved).
    - If no API key is provided, the system falls back to a free/shared LLM (if configured).
-     - **Note**: APIキー未入力時は Worker の無料チェーンを利用します。本番ではサーバー側 `PUBLIC_FALLBACK_LLM_API_KEY` の SiliconFlow API を先に使い、失敗・枠切れ時のみ native `siliconflow_free` へ自動フォールバックします。
+     - **Note**: APIキー未入力時は Worker の無料チェーンを利用します。本番ではサーバー側 `PUBLIC_FALLBACK_LLM_API_KEY` → `PUBLIC_FALLBACK_LLM_API_KEY_2` の順で Ollama Cloud API を使い、両方が失敗・枠切れ時のみ native `siliconflow_free` へ自動フォールバックします。
 
 ## Environment Variables
 

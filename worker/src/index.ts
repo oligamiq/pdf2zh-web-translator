@@ -82,6 +82,7 @@ export type Env = {
   PUBLIC_FALLBACK_LLM_BASE_URL?: string;
   PUBLIC_FALLBACK_LLM_MODEL?: string;
   PUBLIC_FALLBACK_LLM_API_KEY?: string;
+  PUBLIC_FALLBACK_LLM_API_KEY_2?: string;
   SILICONFLOW_API_KEY?: string;
   SMOKE_TOKEN?: string;
 }
@@ -127,15 +128,18 @@ async function decryptApiKey(ciphertextB64: string, ivB64: string, secretB64: st
 async function buildPublicFallbackSnapshots(env: Env, jobId: string): Promise<any[] | null> {
   if (env.PUBLIC_FALLBACK_LLM_ENABLED !== 'true') return null;
 
-  const fallbackKey = env.PUBLIC_FALLBACK_LLM_API_KEY;
+  const fallbackKeys = [
+    env.PUBLIC_FALLBACK_LLM_API_KEY,
+    env.PUBLIC_FALLBACK_LLM_API_KEY_2,
+  ].filter((key): key is string => !!key);
   const plan = publicFallbackProviderPlan(
     env.PUBLIC_FALLBACK_LLM_SOURCE,
     env.PUBLIC_FALLBACK_LLM_BASE_URL,
     env.PUBLIC_FALLBACK_LLM_MODEL,
-    !!fallbackKey,
+    fallbackKeys.length,
   );
   if (!plan) return null;
-  if (plan.some(provider => provider.usesServerApiKey) && (!fallbackKey || !env.USER_SETTINGS_SECRET)) return null;
+  if (plan.some(provider => provider.usesServerApiKey) && !env.USER_SETTINGS_SECRET) return null;
 
   const snapshots: any[] = [];
   for (const provider of plan) {
@@ -146,6 +150,7 @@ async function buildPublicFallbackSnapshots(env: Env, jobId: string): Promise<an
     let legacyIv = null;
     let legacyKeyVersion = 'builtin:none';
 
+    const fallbackKey = provider.serverApiKeyIndex === null ? null : fallbackKeys[provider.serverApiKeyIndex];
     if (provider.usesServerApiKey && fallbackKey && env.USER_SETTINGS_SECRET) {
       const enc = await encryptApiKey(fallbackKey, env.USER_SETTINGS_SECRET, `job_api_provider:${jobId}`);
       encKey = enc.ciphertext;

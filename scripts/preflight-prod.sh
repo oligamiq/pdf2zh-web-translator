@@ -295,11 +295,13 @@ if [ "$FALLBACK_ENABLED" = "true" ]; then
 
     if [[ "$FALLBACK_SOURCE" == "openaicompatible" || "$FALLBACK_SOURCE" == "openai_compatible" || "$FALLBACK_SOURCE" == "gemini" ]]; then
       SECRET_LIST=$(cd "$V2_DIR/worker" && npx wrangler secret list 2>/dev/null || true)
-      if ! printf '%s' "$SECRET_LIST" | grep -q '"name"[[:space:]]*:[[:space:]]*"PUBLIC_FALLBACK_LLM_API_KEY"'; then
-        echo "❌ $FALLBACK_SOURCE requires PUBLIC_FALLBACK_LLM_API_KEY, but the Worker secret is missing."
-        exit 1
-      fi
-      echo "✅ PUBLIC_FALLBACK_LLM_API_KEY is configured; native siliconflow_free will be used as priority-2 fallback."
+      for SECRET_NAME in PUBLIC_FALLBACK_LLM_API_KEY PUBLIC_FALLBACK_LLM_API_KEY_2; do
+        if ! printf '%s' "$SECRET_LIST" | grep -q "\"name\"[[:space:]]*:[[:space:]]*\"${SECRET_NAME}\""; then
+          echo "❌ $FALLBACK_SOURCE requires $SECRET_NAME for the two-account public free-tier pool, but the Worker secret is missing."
+          exit 1
+        fi
+      done
+      echo "✅ Both public fallback API keys are configured; they will be tried in order before native siliconflow_free."
     fi
   fi
   echo "✅ Public Fallback LLM configuration looks good."

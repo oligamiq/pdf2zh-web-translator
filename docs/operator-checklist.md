@@ -38,13 +38,14 @@
 * [ ] `USER_SETTINGS_SECRET`: (32バイト以上のランダム文字列をbase64エンコードしたもの)
 * [ ] `TURNSTILE_SECRET_KEY`: (Cloudflare Turnstile Secret Key)
 * [ ] `PUBLIC_RATE_LIMIT_SALT`: (ランダムなシークレット文字列)
-* [ ] `PUBLIC_FALLBACK_LLM_API_KEY`: (本番無料枠の主系 SiliconFlow API key。native `siliconflow_free` fallback 自体には不要)
+* [ ] `PUBLIC_FALLBACK_LLM_API_KEY`: (本番無料枠の主系 Ollama Cloud API key。native `siliconflow_free` fallback 自体には不要)
+* [ ] `PUBLIC_FALLBACK_LLM_API_KEY_2`: (本番無料枠の予備 Ollama Cloud API key。1本目の失敗・枠切れ後に使用)
 
 **`wrangler.toml` (vars)**:
 * [ ] `PUBLIC_FALLBACK_LLM_ENABLED`: `"true"` または `"false"` (APIキーなし public fallbackを有効にする場合は `"true"`)
 * [ ] `PUBLIC_FALLBACK_LLM_SOURCE`: 本番は `"openai_compatible"`
-* [ ] `PUBLIC_FALLBACK_LLM_BASE_URL`: 本番は `"https://api.siliconflow.cn/v1"`
-* [ ] `PUBLIC_FALLBACK_LLM_MODEL`: 本番は `"Qwen/Qwen2.5-7B-Instruct"`。主系失敗時は native `siliconflow_free` に自動フォールバック
+* [ ] `PUBLIC_FALLBACK_LLM_BASE_URL`: 本番は `"https://ollama.com/v1"`
+* [ ] `PUBLIC_FALLBACK_LLM_MODEL`: 本番は `"gemma4:31b-cloud"`。2本のキーが両方失敗した場合は native `siliconflow_free` に自動フォールバック
 
 ## Cloudflare Pages (Frontend)
 
