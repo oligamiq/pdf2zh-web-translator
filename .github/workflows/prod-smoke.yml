@@ -2,6 +2,10 @@ name: Production Smoke Test
 
 on:
   workflow_call:
+    inputs:
+      expected_git_sha:
+        required: false
+        type: string
   workflow_dispatch:
   schedule:
     - cron: '0 9 * * *'
@@ -16,8 +20,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  smoke-siliconflow:
-    name: SiliconFlow Connectivity
+  smoke-free-tier:
+    name: Public Free-Tier Connectivity
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -40,16 +44,17 @@ jobs:
             exit 1
           fi
 
-      - name: Run SiliconFlow smoke test
+      - name: Run public free-tier smoke test
         id: smoke
         env:
           PROD_SMOKE_TOKEN: ${{ secrets.PROD_SMOKE_TOKEN }}
           PROD_WORKER_URL: https://pdftr.oligami.workers.dev
+          EXPECTED_GIT_SHA: ${{ inputs.expected_git_sha || github.sha }}
         run: |
           set +e
 
           env -u GITHUB_STEP_SUMMARY \
-            npm run smoke:prod-siliconflow \
+            npm run smoke:prod-free-tier \
             > /tmp/prod-smoke.raw.log \
             2>&1
 

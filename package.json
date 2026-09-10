@@ -30,7 +30,8 @@
     "pc-api:build": "docker compose build pc-api",
     "pc-api:logs": "docker compose logs --tail=200 pc-api",
     "smoke:progress": "./scripts/e2e-progress-smoke.sh",
-    "smoke:prod-siliconflow": "node scripts/prod-smoke-siliconflow.mjs",
+    "smoke:prod-free-tier": "node scripts/prod-smoke-siliconflow.mjs",
+    "smoke:prod-siliconflow": "npm run smoke:prod-free-tier",
     "test:python": "python3 -m unittest discover -s pc-api-python/tests -p 'test_*.py' && python3 scripts/test_error_extraction.py",
     "typecheck": "npm --workspace frontend run typecheck && npm --workspace pdf2zh-worker run typecheck",
     "smoke:retention": "./scripts/e2e-retention-exemption-smoke.sh"

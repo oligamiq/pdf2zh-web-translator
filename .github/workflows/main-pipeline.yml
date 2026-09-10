@@ -186,8 +186,12 @@ jobs:
     secrets: inherit
 
   smoke:
-    needs: deploy-backend
+    needs:
+      - deploy-backend
+      - backend-image
     uses: ./.github/workflows/prod-smoke.yml
+    with:
+      expected_git_sha: ${{ needs.backend-image.outputs.git_sha }}
     secrets: inherit
 
   deploy-frontend:

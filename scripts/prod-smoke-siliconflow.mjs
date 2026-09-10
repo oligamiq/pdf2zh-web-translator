@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Production smoke test: SiliconFlow Free provider connectivity
+// Production smoke test: API-key-free public provider chain connectivity
 //
 // Usage:
 //   PROD_SMOKE_TOKEN=<secret> node scripts/prod-smoke-siliconflow.mjs
@@ -46,10 +46,10 @@ if (!SMOKE_TOKEN) {
 }
 
 async function main() {
-  console.log(`🔍 Production Smoke Test: SiliconFlow`);
+  console.log(`🔍 Production Smoke Test: Public Free-Tier Chain`);
   console.log(`   Worker: ${WORKER_URL}\n`);
 
-  let summary = '## Production Smoke Test: SiliconFlow\n\n';
+  let summary = '## Production Smoke Test: Public Free-Tier Chain\n\n';
 
   // --- Check Backend Health ---
   console.log('1. Checking backend health...');
@@ -71,7 +71,7 @@ async function main() {
   console.log('');
 
   // --- Full PDF translation pipeline ---
-  console.log('2. Testing full PDF translation pipeline with siliconflow_free...');
+  console.log('2. Testing full PDF translation pipeline with the public free-tier chain...');
   const fixturePath = path.join(__dirname, 'fixtures', 'smoke-paragraph.pdf');
   const MOCK_PDF = fs.readFileSync(fixturePath);
 
@@ -202,23 +202,39 @@ async function main() {
   const jobResult = await verifyResp.json();
   const metadata = jobResult.execution_metadata || {};
   
-  const requiredMetadata = {
-    route: 'pdf2zh_native',
-    router_used: false,
-    provider: 'siliconflow_free',
-    engine: 'SiliconFlowFree'
-  };
-  
+  const allowedRoutes = [
+    {
+      name: 'Ollama Cloud free-tier pool',
+      route: 'router',
+      router_used: true,
+      provider: 'router_mixed',
+      engine: 'OpenAICompatible',
+    },
+    {
+      name: 'native SiliconFlow fallback',
+      route: 'pdf2zh_native',
+      router_used: false,
+      provider: 'siliconflow_free',
+      engine: 'SiliconFlowFree',
+    },
+  ];
+
+  const matchedRoute = allowedRoutes.find(route =>
+    route.route === metadata.route &&
+    route.router_used === metadata.router_used &&
+    route.provider === metadata.provider &&
+    route.engine === metadata.engine
+  );
+
   const expectedSha = process.env.EXPECTED_GIT_SHA || '';
-  if (expectedSha) {
-    requiredMetadata.backend_git_sha = expectedSha;
-  }
-  
   const missingLogs = [];
-  for (const [key, value] of Object.entries(requiredMetadata)) {
-    if (metadata[key] !== value) {
-      missingLogs.push(`Expected ${key}=${value}, got ${metadata[key]}`);
-    }
+  if (!matchedRoute) {
+    missingLogs.push(
+      `Unexpected route tuple provider=${metadata.provider}, engine=${metadata.engine}, route=${metadata.route}, router_used=${metadata.router_used}`
+    );
+  }
+  if (expectedSha && metadata.backend_git_sha !== expectedSha) {
+    missingLogs.push(`Expected backend_git_sha=${expectedSha}, got ${metadata.backend_git_sha}`);
   }
 
   if (missingLogs.length > 0) {
@@ -234,8 +250,8 @@ async function main() {
     process.exit(1);
   }
   
-  console.log('      ✅ Execution metadata verification passed');
-  summary += '- ✅ execution_metadata route assert ok\n';
+  console.log(`      ✅ Execution metadata verification passed (${matchedRoute?.name || 'accepted route'})`);
+  summary += `- ✅ execution_metadata route assert ok (${matchedRoute?.name || 'accepted route'})\n`;
 
   // Verify downloads
   console.log('   Verifying downloads...');
