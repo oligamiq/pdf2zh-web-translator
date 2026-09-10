@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { createRemoteJWKSet, jwtVerify, createLocalJWKSet } from 'jose'
 import { isRetentionExemptIdentity, isServiceLimitExemptIdentity, retentionDaysForScope, usageLimitsForScope, pdfViewTokenMessage, isExpiredAt } from './retention'
-import { publicFallbackConfigError } from './publicFallback'
+import { publicFallbackProviderPlan } from './publicFallback'
 
 function isOpenAICompatibleProvider(providerType: string | null | undefined): boolean {
   return providerType === "openai_compatible" || providerType === "openaicompatible";
@@ -122,6 +122,59 @@ async function decryptApiKey(ciphertextB64: string, ivB64: string, secretB64: st
   } catch (e) {
     throw new Error('decryption_failed');
   }
+}
+
+async function buildPublicFallbackSnapshots(env: Env, jobId: string): Promise<any[] | null> {
+  if (env.PUBLIC_FALLBACK_LLM_ENABLED !== 'true') return null;
+
+  const fallbackKey = env.PUBLIC_FALLBACK_LLM_API_KEY;
+  const plan = publicFallbackProviderPlan(
+    env.PUBLIC_FALLBACK_LLM_SOURCE,
+    env.PUBLIC_FALLBACK_LLM_BASE_URL,
+    env.PUBLIC_FALLBACK_LLM_MODEL,
+    !!fallbackKey,
+  );
+  if (!plan) return null;
+  if (plan.some(provider => provider.usesServerApiKey) && (!fallbackKey || !env.USER_SETTINGS_SECRET)) return null;
+
+  const snapshots: any[] = [];
+  for (const provider of plan) {
+    let encKey = null;
+    let iv = null;
+    let keyVersion = 'builtin:none';
+    let legacyEncKey = null;
+    let legacyIv = null;
+    let legacyKeyVersion = 'builtin:none';
+
+    if (provider.usesServerApiKey && fallbackKey && env.USER_SETTINGS_SECRET) {
+      const enc = await encryptApiKey(fallbackKey, env.USER_SETTINGS_SECRET, `job_api_provider:${jobId}`);
+      encKey = enc.ciphertext;
+      iv = enc.iv;
+      keyVersion = enc.keyVersion;
+
+      const legacyEnc = await encryptApiKey(fallbackKey, env.USER_SETTINGS_SECRET, `job_llm_snapshot:${jobId}`);
+      legacyEncKey = legacyEnc.ciphertext;
+      legacyIv = legacyEnc.iv;
+      legacyKeyVersion = legacyEnc.keyVersion;
+    }
+
+    snapshots.push({
+      display_name: provider.displayName,
+      provider_type: provider.providerType,
+      base_url: provider.baseUrl,
+      model: provider.model,
+      encrypted_api_key: encKey,
+      api_key_iv: iv,
+      api_key_key_version: keyVersion,
+      legacy_encrypted_api_key: legacyEncKey,
+      legacy_api_key_iv: legacyIv,
+      legacy_api_key_key_version: legacyKeyVersion,
+      priority: provider.priority,
+      timeout_seconds: null,
+      reasoning_effort: null,
+    });
+  }
+  return snapshots;
 }
 
 async function hmacSha256Hex(secret: string, data: string): Promise<string> {
@@ -1136,12 +1189,17 @@ app.post('/jobs', async (c) => {
       }
     } else {
       if (ownerType === 'firebase' && uid) {
-        llm_credential_mode = 'user_settings';
         const providers = await ensureUserProviders(c.env, uid);
         const enabledProviders = providers.filter((p: any) => p.enabled === 1);
         if (enabledProviders.length === 0) {
-          return c.json({ error: 'api_key_required', message: 'Ollama API key is required. Please set it in Settings.' }, 400);
-        }
+          const fallbackSnapshots = await buildPublicFallbackSnapshots(c.env, id);
+          if (!fallbackSnapshots) {
+            return c.json({ error: 'Public fallback LLM is not configured.' }, 503);
+          }
+          llm_credential_mode = 'free_fallback';
+          providersToSnapshot.push(...fallbackSnapshots);
+        } else {
+          llm_credential_mode = 'user_settings';
 
         // Re-encrypt api keys for job snapshot
         for (const p of enabledProviders as any[]) {
@@ -1199,60 +1257,14 @@ app.post('/jobs', async (c) => {
                 reasoning_effort: p.reasoning_effort
             });
         }
+        }
       } else {
-        if (c.env.PUBLIC_FALLBACK_LLM_ENABLED !== 'true') {
-          return c.json({ error: 'Public fallback LLM is not configured. Please enter your own Ollama API key or sign in and configure Settings.' }, 503);
+        const fallbackSnapshots = await buildPublicFallbackSnapshots(c.env, id);
+        if (!fallbackSnapshots) {
+          return c.json({ error: 'Public fallback LLM is not configured.' }, 503);
         }
-
-        const source = c.env.PUBLIC_FALLBACK_LLM_SOURCE;
-        const baseUrl = c.env.PUBLIC_FALLBACK_LLM_BASE_URL;
-        const model = c.env.PUBLIC_FALLBACK_LLM_MODEL;
-        const fallbackKey = c.env.PUBLIC_FALLBACK_LLM_API_KEY;
-
-        const isBuiltInFreeProvider = source === 'siliconflow_free';
-        if (publicFallbackConfigError(source, baseUrl, model, !!fallbackKey)) {
-          return c.json({ error: 'Public fallback LLM is not configured. Please enter your own Ollama API key or sign in and configure Settings.' }, 503);
-        }
-
         llm_credential_mode = 'free_fallback';
-        let encKey = null;
-        let iv = null;
-        let keyVersion = 'v1';
-        let legacyEncKey = null;
-        let legacyIv = null;
-        let legacyKeyVersion = 'v1';
-
-        if (!isBuiltInFreeProvider && fallbackKey && c.env.USER_SETTINGS_SECRET) {
-          try {
-            const enc = await encryptApiKey(fallbackKey, c.env.USER_SETTINGS_SECRET, `job_api_provider:${id}`);
-            encKey = enc.ciphertext;
-            iv = enc.iv;
-            keyVersion = enc.keyVersion;
-
-            const legacyEnc = await encryptApiKey(fallbackKey, c.env.USER_SETTINGS_SECRET, `job_llm_snapshot:${id}`);
-            legacyEncKey = legacyEnc.ciphertext;
-            legacyIv = legacyEnc.iv;
-            legacyKeyVersion = legacyEnc.keyVersion;
-          } catch (e) {
-            return c.json({ error: 'internal_error', message: 'Failed to encrypt fallback API key' }, 500);
-          }
-        }
-
-        providersToSnapshot.push({
-            display_name: isBuiltInFreeProvider ? 'SiliconFlow Free' : 'Public Fallback',
-            provider_type: source,
-            base_url: isBuiltInFreeProvider ? '' : baseUrl,
-            model: isBuiltInFreeProvider ? '' : model,
-            encrypted_api_key: encKey,
-            api_key_iv: iv,
-            api_key_key_version: keyVersion,
-            legacy_encrypted_api_key: legacyEncKey,
-            legacy_api_key_iv: legacyIv,
-            legacy_api_key_key_version: legacyKeyVersion,
-            priority: 1,
-            timeout_seconds: null,
-            reasoning_effort: null
-        });
+        providersToSnapshot.push(...fallbackSnapshots);
       }
     }
 
@@ -2101,18 +2113,16 @@ app.post('/internal/smoke/job', async (c) => {
     const fileSizeBytes = file.size;
     console.log("smoke_pdf_prepared");
 
-    // Use Public Fallback credentials (SiliconFlow Free)
-    let llm_source = 'siliconflow_free';
-    let llm_base_url = c.env.PUBLIC_FALLBACK_LLM_BASE_URL || '';
-    let llm_model = c.env.PUBLIC_FALLBACK_LLM_MODEL || '';
-    let llm_credential_mode = 'public_fallback';
-
-    let encKey = null;
-    let iv = null;
-    let keyVersion = 'builtin:none';
-    let legacyEncKey = null;
-    let legacyIv = null;
-    let legacyKeyVersion = 'builtin:none';
+    // Exercise the same server-side free chain as ordinary API-key-free jobs.
+    const smokeProviders = await buildPublicFallbackSnapshots(c.env, id);
+    if (!smokeProviders || smokeProviders.length === 0) {
+      return c.json({ error: 'public_fallback_not_configured' }, 503);
+    }
+    const primaryProvider = smokeProviders[0];
+    const llm_source = primaryProvider.provider_type;
+    const llm_base_url = primaryProvider.base_url;
+    const llm_model = primaryProvider.model;
+    const llm_credential_mode = 'free_fallback';
 
     console.log("smoke_d1_insert_start");
     // 1. Insert to D1
@@ -2127,16 +2137,22 @@ app.post('/internal/smoke/job', async (c) => {
     ).bind(
       id, 'smoke_user', file.name,
       llm_source, llm_base_url, llm_model,
-      legacyEncKey, legacyIv, legacyKeyVersion,
+      primaryProvider.legacy_encrypted_api_key, primaryProvider.legacy_api_key_iv, primaryProvider.legacy_api_key_key_version,
       'public', publicReceiptHash, null, null,
       publicExpiresAt, fileSizeBytes, 1, llm_credential_mode
     ).run()
 
-    // Insert into job_api_provider_snapshots
-    await c.env.DB.prepare(`
+    // Insert the full keyed-primary -> native-free fallback chain.
+    await c.env.DB.batch(smokeProviders.map(provider =>
+      c.env.DB.prepare(`
         INSERT INTO job_api_provider_snapshots (id, job_id, display_name, provider_type, base_url, model, encrypted_api_key, api_key_iv, api_key_key_version, priority, timeout_seconds, reasoning_effort)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(crypto.randomUUID(), id, 'SiliconFlow Free (Smoke Test)', llm_source, llm_base_url, llm_model, encKey, iv, keyVersion, 1, null, null).run()
+      `).bind(
+        crypto.randomUUID(), id, provider.display_name, provider.provider_type, provider.base_url, provider.model,
+        provider.encrypted_api_key, provider.api_key_iv, provider.api_key_key_version, provider.priority,
+        provider.timeout_seconds, provider.reasoning_effort
+      )
+    ));
     console.log("smoke_d1_insert_ok");
 
     console.log("smoke_job_created: id=", id)

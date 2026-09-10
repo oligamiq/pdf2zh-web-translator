@@ -38,13 +38,13 @@
 * [ ] `USER_SETTINGS_SECRET`: (32バイト以上のランダム文字列をbase64エンコードしたもの)
 * [ ] `TURNSTILE_SECRET_KEY`: (Cloudflare Turnstile Secret Key)
 * [ ] `PUBLIC_RATE_LIMIT_SALT`: (ランダムなシークレット文字列)
-* [ ] `PUBLIC_FALLBACK_LLM_API_KEY`: (OpenAI互換/Gemini等をPublic fallbackに使う場合のみ。`siliconflow_free` では不要)
+* [ ] `PUBLIC_FALLBACK_LLM_API_KEY`: (本番無料枠の主系 SiliconFlow API key。native `siliconflow_free` fallback 自体には不要)
 
 **`wrangler.toml` (vars)**:
 * [ ] `PUBLIC_FALLBACK_LLM_ENABLED`: `"true"` または `"false"` (APIキーなし public fallbackを有効にする場合は `"true"`)
-* [ ] `PUBLIC_FALLBACK_LLM_SOURCE`: `"siliconflow_free"` など (ENABLED="true"のとき必須)
-* [ ] `PUBLIC_FALLBACK_LLM_BASE_URL`: `siliconflow_free` 以外では必須
-* [ ] `PUBLIC_FALLBACK_LLM_MODEL`: `siliconflow_free` 以外では必須
+* [ ] `PUBLIC_FALLBACK_LLM_SOURCE`: 本番は `"openai_compatible"`
+* [ ] `PUBLIC_FALLBACK_LLM_BASE_URL`: 本番は `"https://api.siliconflow.cn/v1"`
+* [ ] `PUBLIC_FALLBACK_LLM_MODEL`: 本番は `"Qwen/Qwen2.5-7B-Instruct"`。主系失敗時は native `siliconflow_free` に自動フォールバック
 
 ## Cloudflare Pages (Frontend)
 

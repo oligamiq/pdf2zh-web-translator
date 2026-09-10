@@ -39,9 +39,9 @@ npx wrangler secret put AGENT_TOKEN
 npx wrangler secret put USER_SETTINGS_SECRET
 npx wrangler secret put PUBLIC_RATE_LIMIT_SALT
 npx wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY
-# APIキーなしの public fallback には PUBLIC_FALLBACK_LLM_ENABLED="true" を設定します。
-# SOURCE="siliconflow_free" の場合は Base URL / Model / API key は不要です。
-# その他の provider では SOURCE, BASE_URL, MODEL と必要な API key secret を設定してください。
+# APIキー未入力時の無料チェーンには PUBLIC_FALLBACK_LLM_ENABLED="true" を設定します。
+# 本番は PUBLIC_FALLBACK_LLM_API_KEY + SiliconFlow API を主系として使用します。
+# 主系が失敗/枠切れの場合は native siliconflow_free へ自動フォールバックします。
 ```
 
 ## PC Docker (Agent & API)

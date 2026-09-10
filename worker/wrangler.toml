@@ -20,6 +20,8 @@ FIREBASE_PROJECT_ID = "pdf2zh-tr"
 # wrangler secret put PROXY_SECRET
 # Or locally via .dev.vars
 PUBLIC_FALLBACK_LLM_ENABLED = "true"
-PUBLIC_FALLBACK_LLM_SOURCE = "siliconflow_free"
-# siliconflow_free is provided by PDFMathTranslate and requires no Base URL, model, or API key.
-# For other fallback providers, set PUBLIC_FALLBACK_LLM_BASE_URL / MODEL and the API key secret as needed.
+PUBLIC_FALLBACK_LLM_SOURCE = "openai_compatible"
+PUBLIC_FALLBACK_LLM_BASE_URL = "https://api.siliconflow.cn/v1"
+PUBLIC_FALLBACK_LLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+# PUBLIC_FALLBACK_LLM_API_KEY is stored as a Worker secret and is the primary free-tier credential.
+# Native siliconflow_free is appended automatically as the second provider when the primary fails/exhausts quota.
