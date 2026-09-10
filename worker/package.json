@@ -11,7 +11,8 @@
     "secret:turnstile": "npx wrangler secret put TURNSTILE_SECRET_KEY",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:retention": "rm -rf .tmp/retention-test && tsc src/retention.ts --target ES2022 --module commonjs --outDir .tmp/retention-test --skipLibCheck && node --test tests/retention.test.cjs",
-    "test": "npm run typecheck && npm run test:retention"
+    "test:public-fallback": "rm -rf .tmp/public-fallback-test && tsc src/publicFallback.ts --target ES2022 --module commonjs --outDir .tmp/public-fallback-test --skipLibCheck && node --test tests/publicFallback.test.cjs",
+    "test": "npm run typecheck && npm run test:retention && npm run test:public-fallback"
   },
   "dependencies": {
     "hono": "^4.2.0",

@@ -47,7 +47,7 @@ npx wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY
 
 ## 8. Worker deploy
 `v2/worker/wrangler.toml` の `AUTH_MODE="firebase"` および `FIREBASE_PROJECT_ID` 等が正しく設定されているか確認し、デプロイします。
-また、APIキーなしの Public Fallback を利用する場合は `PUBLIC_FALLBACK_LLM_ENABLED="true"` に設定し、`SOURCE`, `BASE_URL`, `MODEL` を記述してください。
+また、APIキーなしの Public Fallback を利用する場合は `PUBLIC_FALLBACK_LLM_ENABLED="true"` に設定します。`SOURCE="siliconflow_free"` では Base URL / Model / API key は不要です。その他の provider では `SOURCE`, `BASE_URL`, `MODEL` と必要な API key secret を設定してください。
 ```bash
 cd /path/to/pdf2zh-web-translator
 npm run deploy:worker

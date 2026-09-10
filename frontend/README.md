@@ -19,7 +19,7 @@ The application supports two primary usage modes:
    - Rate limited per IP (3/day) and Client ID (1/day).
    - Users can optionally provide a one-time API key for the job (not saved).
    - If no API key is provided, the system falls back to a free/shared LLM (if configured).
-     - **Note**: APIキーなしの public fallback を利用するには、バックエンドの Worker 側で `PUBLIC_FALLBACK_LLM_ENABLED="true"` および関連する設定 (SOURCE, BASE_URL, MODEL, SECRET) が完了している必要があります。未設定の場合はエラーとなります。
+     - **Note**: APIキーなしの public fallback を利用するには Worker 側で `PUBLIC_FALLBACK_LLM_ENABLED="true"` が必要です。`SOURCE="siliconflow_free"` は Base URL / Model / API key 不要で利用でき、その他の provider はそれぞれ必要な接続設定と secret が必要です。
 
 ## Environment Variables
 

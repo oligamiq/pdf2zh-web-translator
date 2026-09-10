@@ -38,13 +38,13 @@
 * [ ] `USER_SETTINGS_SECRET`: (32バイト以上のランダム文字列をbase64エンコードしたもの)
 * [ ] `TURNSTILE_SECRET_KEY`: (Cloudflare Turnstile Secret Key)
 * [ ] `PUBLIC_RATE_LIMIT_SALT`: (ランダムなシークレット文字列)
-* [ ] `PUBLIC_FALLBACK_LLM_API_KEY`: (Public mode用フォールバックOllama等のAPIキー)
+* [ ] `PUBLIC_FALLBACK_LLM_API_KEY`: (OpenAI互換/Gemini等をPublic fallbackに使う場合のみ。`siliconflow_free` では不要)
 
 **`wrangler.toml` (vars)**:
 * [ ] `PUBLIC_FALLBACK_LLM_ENABLED`: `"true"` または `"false"` (APIキーなし public fallbackを有効にする場合は `"true"`)
-* [ ] `PUBLIC_FALLBACK_LLM_SOURCE`: `"openaicompatible"` (ENABLED="true"のとき必須)
-* [ ] `PUBLIC_FALLBACK_LLM_BASE_URL`: `https://your-public-llm-url` (ENABLED="true"のとき必須)
-* [ ] `PUBLIC_FALLBACK_LLM_MODEL`: `your-public-llm-model` (ENABLED="true"のとき必須)
+* [ ] `PUBLIC_FALLBACK_LLM_SOURCE`: `"siliconflow_free"` など (ENABLED="true"のとき必須)
+* [ ] `PUBLIC_FALLBACK_LLM_BASE_URL`: `siliconflow_free` 以外では必須
+* [ ] `PUBLIC_FALLBACK_LLM_MODEL`: `siliconflow_free` 以外では必須
 
 ## Cloudflare Pages (Frontend)
 

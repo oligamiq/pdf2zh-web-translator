@@ -280,13 +280,22 @@ if [ "$FALLBACK_ENABLED" = "true" ]; then
   FALLBACK_BASE_URL=$(grep -E '^\s*PUBLIC_FALLBACK_LLM_BASE_URL\s*=' "$WORKER_TOML" | cut -d '"' -f 2 || echo "")
   FALLBACK_MODEL=$(grep -E '^\s*PUBLIC_FALLBACK_LLM_MODEL\s*=' "$WORKER_TOML" | cut -d '"' -f 2 || echo "")
   
-  if [ -z "$FALLBACK_SOURCE" ] || [ -z "$FALLBACK_BASE_URL" ] || [ -z "$FALLBACK_MODEL" ]; then
-    echo "❌ PUBLIC_FALLBACK_LLM_ENABLED is true, but SOURCE, BASE_URL or MODEL are missing in wrangler.toml [vars]"
+  if [ -z "$FALLBACK_SOURCE" ]; then
+    echo "❌ PUBLIC_FALLBACK_LLM_ENABLED is true, but SOURCE is missing in wrangler.toml [vars]"
     exit 1
   fi
-  
-  if [[ "$FALLBACK_SOURCE" == "openaicompatible" || "$FALLBACK_SOURCE" == "gemini" ]]; then
-    echo "⚠️ Note: $FALLBACK_SOURCE requires PUBLIC_FALLBACK_LLM_API_KEY. Ensure it is set via 'wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY'"
+
+  if [ "$FALLBACK_SOURCE" = "siliconflow_free" ]; then
+    echo "✅ siliconflow_free requires no Base URL, model, or API key."
+  else
+    if [ -z "$FALLBACK_BASE_URL" ] || [ -z "$FALLBACK_MODEL" ]; then
+      echo "❌ Public fallback $FALLBACK_SOURCE requires BASE_URL and MODEL in wrangler.toml [vars]"
+      exit 1
+    fi
+
+    if [[ "$FALLBACK_SOURCE" == "openaicompatible" || "$FALLBACK_SOURCE" == "openai_compatible" || "$FALLBACK_SOURCE" == "gemini" ]]; then
+      echo "⚠️ Note: $FALLBACK_SOURCE requires PUBLIC_FALLBACK_LLM_API_KEY. Ensure it is set via 'wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY'"
+    fi
   fi
   echo "✅ Public Fallback LLM configuration looks good."
 else

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { createRemoteJWKSet, jwtVerify, createLocalJWKSet } from 'jose'
 import { isRetentionExemptIdentity, isServiceLimitExemptIdentity, retentionDaysForScope, usageLimitsForScope, pdfViewTokenMessage, isExpiredAt } from './retention'
+import { publicFallbackConfigError } from './publicFallback'
 
 function isOpenAICompatibleProvider(providerType: string | null | undefined): boolean {
   return providerType === "openai_compatible" || providerType === "openaicompatible";
@@ -1208,7 +1209,8 @@ app.post('/jobs', async (c) => {
         const model = c.env.PUBLIC_FALLBACK_LLM_MODEL;
         const fallbackKey = c.env.PUBLIC_FALLBACK_LLM_API_KEY;
 
-        if (!source || !baseUrl || !model || ((isOpenAICompatibleProvider(source) || source === 'gemini') && !fallbackKey)) {
+        const isBuiltInFreeProvider = source === 'siliconflow_free';
+        if (publicFallbackConfigError(source, baseUrl, model, !!fallbackKey)) {
           return c.json({ error: 'Public fallback LLM is not configured. Please enter your own Ollama API key or sign in and configure Settings.' }, 503);
         }
 
@@ -1220,7 +1222,7 @@ app.post('/jobs', async (c) => {
         let legacyIv = null;
         let legacyKeyVersion = 'v1';
 
-        if (fallbackKey && c.env.USER_SETTINGS_SECRET) {
+        if (!isBuiltInFreeProvider && fallbackKey && c.env.USER_SETTINGS_SECRET) {
           try {
             const enc = await encryptApiKey(fallbackKey, c.env.USER_SETTINGS_SECRET, `job_api_provider:${id}`);
             encKey = enc.ciphertext;
@@ -1237,10 +1239,10 @@ app.post('/jobs', async (c) => {
         }
 
         providersToSnapshot.push({
-            display_name: 'Public Fallback',
+            display_name: isBuiltInFreeProvider ? 'SiliconFlow Free' : 'Public Fallback',
             provider_type: source,
-            base_url: baseUrl,
-            model: model,
+            base_url: isBuiltInFreeProvider ? '' : baseUrl,
+            model: isBuiltInFreeProvider ? '' : model,
             encrypted_api_key: encKey,
             api_key_iv: iv,
             api_key_key_version: keyVersion,

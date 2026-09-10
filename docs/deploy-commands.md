@@ -39,9 +39,9 @@ npx wrangler secret put AGENT_TOKEN
 npx wrangler secret put USER_SETTINGS_SECRET
 npx wrangler secret put PUBLIC_RATE_LIMIT_SALT
 npx wrangler secret put PUBLIC_FALLBACK_LLM_API_KEY
-# (Note: APIキーなしの public fallback を有効にするには、wrangler.toml の vars で
-# PUBLIC_FALLBACK_LLM_ENABLED="true" とし、SOURCE, BASE_URL, MODEL も設定する必要があります。
-# 未設定の場合は自動的にフォールバックが無効化され、利用できません)
+# APIキーなしの public fallback には PUBLIC_FALLBACK_LLM_ENABLED="true" を設定します。
+# SOURCE="siliconflow_free" の場合は Base URL / Model / API key は不要です。
+# その他の provider では SOURCE, BASE_URL, MODEL と必要な API key secret を設定してください。
 ```
 
 ## PC Docker (Agent & API)
